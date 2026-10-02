@@ -1,0 +1,13 @@
+{
+	"name": "Go",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"mounts": [
+		"source=${localEnv:HOME}/.ssh/id_ed25519.pub,target=/tmp/netkkc-github.pub,type=bind,readonly"
+	],
+	"remoteEnv": {
+		"GIT_SSH_COMMAND": "ssh -o IdentitiesOnly=yes -i /tmp/netkkc-github.pub"
+	},
+	"postStartCommand": "bash .devcontainer/start-mozc.sh"
+}

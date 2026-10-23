@@ -24,6 +24,9 @@ linters:
       - linters:
           - revive
         text: "package-comments"
+      - linters: # Comment out for production.
+          - revive
+        text: "exported"
       - path: _test\.go
         linters:
           - goconst

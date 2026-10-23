@@ -31,7 +31,7 @@ VS Code Dev Container で開く。`compose.yaml` が次の 3 サービスを起�
 - Mozc のディスカバリーファイル（`.session.ipc`）は所有者しか読めないため、
   `mozc` と `api` は `.devcontainer/run-as-workspace-owner.sh` でワークスペースの所有者
   （uid/gid）として動く。`dev` は `updateRemoteUserUID` でホストの uid に合わせる。
-- Mozc のバージョンは `docker/mozc.Dockerfile` で固定している。
+- Mozc のバージョンは `.devcontainer/Dockerfile.mozc` で固定している。
 
 ## ビルドとテスト
 
@@ -58,7 +58,7 @@ make test-integration  # テストキャッシュを使わずに全テストを�
 | `internal/httpapi/` | HTTP ハンドラー、要求の検証、エラーの対応付け。 |
 | `internal/mozc/` | Mozc IPC クライアント（Unix ソケット＋protobuf）と変換処理。 |
 | `compose.yaml`, `.devcontainer/` | 開発環境。 |
-| `docker/mozc.Dockerfile` | Mozc イメージ。 |
+| `.devcontainer/Dockerfile.mozc` | Mozc イメージ。 |
 
 ## 現在の実装状況
 

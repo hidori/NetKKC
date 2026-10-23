@@ -37,8 +37,8 @@ services:
 
   mozc:
     build:
-      context: docker
-      dockerfile: mozc.Dockerfile
+      context: .devcontainer
+      dockerfile: Dockerfile.mozc
     working_dir: /workspaces/NetKKC
     user: root
     entrypoint: ["sh", ".devcontainer/run-as-workspace-owner.sh"]

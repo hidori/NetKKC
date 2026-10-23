@@ -210,3 +210,7 @@ Go から Linux の専用 `mozc_server` に Unix ソケットと protobuf で接
 文節境界は Mozc の文節伸縮で設定し、要求された境界と実際の結果の一致を確認する。
 すべての文節が確定済みなら、Mozc を呼ばずに確定候補を返す。
 本文中の候補例は、実際の辞書やバージョンによる候補順を保証しない。
+
+開発環境では `make run` が Docker 内の専用 Mozc を起動し、接続と設定を確認してから
+ホスト側の Go API を起動する。Linux のホストネットワークとプロファイルの共有を利用する。
+`make test-integration` はこの構成で実 Mozc と HTTP API を検証する。

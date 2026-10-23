@@ -84,8 +84,22 @@ func (c *Client) Configure(ctx context.Context) error {
 	config = number(config, 41, 2)
 	config = number(config, 50, 2)
 	input := number(nil, 1, 7) // SET_CONFIG
-	_, err := c.call(ctx, message(input, 5, config))
-	return err
+	out, err := c.call(ctx, message(input, 5, config))
+	if err != nil {
+		return err
+	}
+	fields, err := decode(out.config)
+	if err != nil {
+		return err
+	}
+	settings := make(map[int]uint64)
+	for _, f := range fields {
+		settings[int(f.number)] = f.value
+	}
+	if settings[20] != 1 || settings[41] != 2 || settings[50] != 2 {
+		return errors.New("Mozc did not enable incognito, NO_HISTORY and MSIME key bindings")
+	}
+	return nil
 }
 
 type session struct {

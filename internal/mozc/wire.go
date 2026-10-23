@@ -95,37 +95,12 @@ func decodeOutput(data []byte) (commandOutput, error) {
 		case outputID:
 			result.id = field.value
 		case outputPreedit:
-			preedit, err := decode(field.data)
+			segments, err := decodePreedit(field.data)
 			if err != nil {
 				return commandOutput{}, err
 			}
 
-			for _, part := range preedit {
-				if part.number != preeditSegmentGroup {
-					continue
-				}
-
-				fields, err := decode(part.data)
-				if err != nil {
-					return commandOutput{}, err
-				}
-
-				var segment preeditSegment
-
-				for _, field := range fields {
-					switch field.number {
-					case segmentAnnotation:
-						segment.focused = field.value == annotationHighlight
-					case segmentValue:
-						segment.text = string(field.data)
-					case segmentKey:
-						segment.reading = string(field.data)
-					default: // Unknown fields are skipped.
-					}
-				}
-
-				result.segments = append(result.segments, segment)
-			}
+			result.segments = append(result.segments, segments...)
 		case outputConfig:
 			result.config = field.data
 		case outputErrorCode:
@@ -133,38 +108,107 @@ func decodeOutput(data []byte) (commandOutput, error) {
 				return commandOutput{}, fmt.Errorf("mozc session failure (%d)", field.value)
 			}
 		case outputAllCandidateWords:
-			list, err := decode(field.data)
+			candidates, err := decodeCandidateList(field.data)
 			if err != nil {
 				return commandOutput{}, err
 			}
 
-			for _, entry := range list {
-				if entry.number != candidateListCandidates {
-					continue
-				}
-
-				fields, err := decode(entry.data)
-				if err != nil {
-					return commandOutput{}, err
-				}
-
-				var cand candidate
-
-				for _, field := range fields {
-					switch field.number {
-					case candidateWordID:
-						cand.id = int32(field.value)
-					case candidateWordValue:
-						cand.text = string(field.data)
-					default: // Unknown fields are skipped.
-					}
-				}
-
-				result.candidates = append(result.candidates, cand)
-			}
+			result.candidates = append(result.candidates, candidates...)
 		default: // Unknown fields are skipped.
 		}
 	}
 
 	return result, nil
+}
+
+func decodePreedit(data []byte) ([]preeditSegment, error) {
+	parts, err := decode(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var segments []preeditSegment
+
+	for _, part := range parts {
+		if part.number != preeditSegmentGroup {
+			continue
+		}
+
+		segment, err := decodePreeditSegment(part.data)
+		if err != nil {
+			return nil, err
+		}
+
+		segments = append(segments, segment)
+	}
+
+	return segments, nil
+}
+
+func decodePreeditSegment(data []byte) (preeditSegment, error) {
+	fields, err := decode(data)
+	if err != nil {
+		return preeditSegment{}, err
+	}
+
+	var segment preeditSegment
+
+	for _, field := range fields {
+		switch field.number {
+		case segmentAnnotation:
+			segment.focused = field.value == annotationHighlight
+		case segmentValue:
+			segment.text = string(field.data)
+		case segmentKey:
+			segment.reading = string(field.data)
+		default: // Unknown fields are skipped.
+		}
+	}
+
+	return segment, nil
+}
+
+func decodeCandidateList(data []byte) ([]candidate, error) {
+	entries, err := decode(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var candidates []candidate
+
+	for _, entry := range entries {
+		if entry.number != candidateListCandidates {
+			continue
+		}
+
+		cand, err := decodeCandidateWord(entry.data)
+		if err != nil {
+			return nil, err
+		}
+
+		candidates = append(candidates, cand)
+	}
+
+	return candidates, nil
+}
+
+func decodeCandidateWord(data []byte) (candidate, error) {
+	fields, err := decode(data)
+	if err != nil {
+		return candidate{}, err
+	}
+
+	var cand candidate
+
+	for _, field := range fields {
+		switch field.number {
+		case candidateWordID:
+			cand.id = int32(field.value)
+		case candidateWordValue:
+			cand.text = string(field.data)
+		default: // Unknown fields are skipped.
+		}
+	}
+
+	return cand, nil
 }

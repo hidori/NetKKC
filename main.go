@@ -37,9 +37,9 @@ func run() error {
 		return err
 	}
 
-	e := httpapi.New(mozc.NewConverter(client))
-	e.Server.ReadHeaderTimeout = 5 * time.Second
-	e.Server.IdleTimeout = time.Minute
+	app := httpapi.New(mozc.NewConverter(client))
+	app.Server.ReadHeaderTimeout = 5 * time.Second
+	app.Server.IdleTimeout = time.Minute
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -50,10 +50,10 @@ func run() error {
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		_ = e.Shutdown(shutdown)
+		_ = app.Shutdown(shutdown)
 	}()
 
-	if err := e.Start(*address); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := app.Start(*address); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 

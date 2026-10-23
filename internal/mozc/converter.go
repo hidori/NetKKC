@@ -33,13 +33,13 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 		return nil, ctx.Err()
 	}
 
-	s, err := c.client.create(ctx)
+	sess, err := c.client.create(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer s.close()
+	defer sess.close()
 
-	out, err := s.begin(ctx, reading)
+	out, err := sess.begin(ctx, reading)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 			return nil, ErrBoundaries
 		}
 
-		out, err = s.resize(ctx, out, reading, boundaries)
+		out, err = sess.resize(ctx, out, reading, boundaries)
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +63,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 		for focused(out) > 0 {
 			previous := focused(out)
 
-			out, err = s.key(ctx, number(nil, 3, 6)) // LEFT
+			out, err = sess.key(ctx, number(nil, 3, 6)) // LEFT
 			if err != nil {
 				return nil, err
 			}
@@ -97,7 +97,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 		result = append(result, segment)
 
 		if i+1 < len(out.segments) {
-			out, err = s.key(ctx, number(nil, 3, 7)) // RIGHT
+			out, err = sess.key(ctx, number(nil, 3, 7)) // RIGHT
 			if err != nil {
 				return nil, err
 			}

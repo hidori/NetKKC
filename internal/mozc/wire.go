@@ -33,31 +33,31 @@ func decode(data []byte) ([]field, error) {
 	var fields []field
 
 	for len(data) > 0 {
-		tag, kind, n := protowire.ConsumeTag(data)
-		if n < 0 {
-			return nil, protowire.ParseError(n)
+		tag, kind, size := protowire.ConsumeTag(data)
+		if size < 0 {
+			return nil, protowire.ParseError(size)
 		}
 
-		data = data[n:]
-		f := field{number: tag}
+		data = data[size:]
+		fld := field{number: tag}
 
 		switch kind {
 		case protowire.VarintType:
-			f.value, n = protowire.ConsumeVarint(data)
+			fld.value, size = protowire.ConsumeVarint(data)
 		case protowire.BytesType:
-			f.data, n = protowire.ConsumeBytes(data)
+			fld.data, size = protowire.ConsumeBytes(data)
 		case protowire.StartGroupType:
-			f.data, n = protowire.ConsumeGroup(tag, data)
+			fld.data, size = protowire.ConsumeGroup(tag, data)
 		default:
-			n = protowire.ConsumeFieldValue(tag, kind, data)
+			size = protowire.ConsumeFieldValue(tag, kind, data)
 		}
 
-		if n < 0 {
-			return nil, fmt.Errorf("mozc protobuf field %d: %w", tag, protowire.ParseError(n))
+		if size < 0 {
+			return nil, fmt.Errorf("mozc protobuf field %d: %w", tag, protowire.ParseError(size))
 		}
 
-		fields = append(fields, f)
-		data = data[n:]
+		fields = append(fields, fld)
+		data = data[size:]
 	}
 
 	return fields, nil
@@ -89,12 +89,12 @@ func decodeOutput(data []byte) (output, error) {
 
 	var result output
 
-	for _, f := range fields {
-		switch f.number {
+	for _, fld := range fields {
+		switch fld.number {
 		case 1:
-			result.id = f.value
+			result.id = fld.value
 		case 5:
-			preedit, err := decode(f.data)
+			preedit, err := decode(fld.data)
 			if err != nil {
 				return output{}, err
 			}
@@ -111,27 +111,27 @@ func decodeOutput(data []byte) (output, error) {
 
 				var segment preeditSegment
 
-				for _, f := range fields {
-					switch f.number {
+				for _, fld := range fields {
+					switch fld.number {
 					case 3:
-						segment.focused = f.value == 2
+						segment.focused = fld.value == 2
 					case 4:
-						segment.text = string(f.data)
+						segment.text = string(fld.data)
 					case 6:
-						segment.reading = string(f.data)
+						segment.reading = string(fld.data)
 					}
 				}
 
 				result.segments = append(result.segments, segment)
 			}
 		case 9:
-			result.config = f.data
+			result.config = fld.data
 		case 11:
-			if f.value != 0 {
-				return output{}, fmt.Errorf("mozc session failure (%d)", f.value)
+			if fld.value != 0 {
+				return output{}, fmt.Errorf("mozc session failure (%d)", fld.value)
 			}
 		case 14:
-			list, err := decode(f.data)
+			list, err := decode(fld.data)
 			if err != nil {
 				return output{}, err
 			}
@@ -146,18 +146,18 @@ func decodeOutput(data []byte) (output, error) {
 					return output{}, err
 				}
 
-				var c candidate
+				var cand candidate
 
-				for _, f := range fields {
-					switch f.number {
+				for _, fld := range fields {
+					switch fld.number {
 					case 1:
-						c.id = int32(f.value)
+						cand.id = int32(fld.value)
 					case 4:
-						c.text = string(f.data)
+						cand.text = string(fld.data)
 					}
 				}
 
-				result.candidates = append(result.candidates, c)
+				result.candidates = append(result.candidates, cand)
 			}
 		}
 	}

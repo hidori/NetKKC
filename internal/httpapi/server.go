@@ -30,32 +30,32 @@ type Server struct {
 var _ api.StrictServerInterface = (*Server)(nil)
 
 func New(converter Converter) *echo.Echo {
-	e := echo.New()
-	e.JSONSerializer = strictJSONSerializer{}
-	e.Use(middleware.Recover(), middleware.BodyLimit("1M"))
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			if c.Request().Method == http.MethodPost && c.Path() == "/convert" {
-				kind, _, err := mime.ParseMediaType(c.Request().Header.Get(echo.HeaderContentType))
+	app := echo.New()
+	app.JSONSerializer = strictJSONSerializer{}
+	app.Use(middleware.Recover(), middleware.BodyLimit("1M"))
+	app.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(ctx echo.Context) error {
+			if ctx.Request().Method == http.MethodPost && ctx.Path() == "/convert" {
+				kind, _, err := mime.ParseMediaType(ctx.Request().Header.Get(echo.HeaderContentType))
 				if err != nil || kind != echo.MIMEApplicationJSON {
 					return echo.NewHTTPError(http.StatusUnsupportedMediaType, "Content-Type must be application/json")
 				}
 			}
 
-			return next(c)
+			return next(ctx)
 		}
 	})
-	api.RegisterHandlers(e, api.NewStrictHandler(&Server{converter: converter}, nil))
+	api.RegisterHandlers(app, api.NewStrictHandler(&Server{converter: converter}, nil))
 
-	return e
+	return app
 }
 
 type strictJSONSerializer struct {
 	echo.DefaultJSONSerializer
 }
 
-func (strictJSONSerializer) Deserialize(c echo.Context, target any) error {
-	data, err := io.ReadAll(c.Request().Body)
+func (strictJSONSerializer) Deserialize(ctx echo.Context, target any) error {
+	data, err := io.ReadAll(ctx.Request().Body)
 	if err != nil {
 		return err
 	}

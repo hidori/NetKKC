@@ -9,8 +9,8 @@ info:
     Go の生成器には oapi-codegen を使用し、Echo 用サーバーとモデルを生成する。
     生成器は OpenAPI 3.1 対応の oapi-codegen v2.8.0 に固定する。
 
-    変換 API は未実装。POST /convert は未確定のメソッド・パスを具体化するための暫定案。
-    エラーの HTTP ステータス・本文形式、入力上限、空の読みの扱いは未確定。
+    POST /convert で初回変換と再変換を処理する。
+    空の読みは受け付けない。要求本文の上限は 1 MiB、変換処理の期限は15秒。
     examples は構造を示す例であり、Mozc の分割や候補順を保証しない。
 paths:
   /healsh:
@@ -32,7 +32,7 @@ paths:
       operationId: convert
       summary: 読みを文節ごとのかな漢字候補に変換する
       description: |
-        初回と再変換で同じ API を使用する。メソッドとパスは暫定。
+        初回と再変換で同じ API を使用する。
         segments の省略・空配列は Mozc による自動分割を意味する。
         指定時は各要素の reading で文節境界を指定する。
 
@@ -125,17 +125,34 @@ paths:
                         candidates: [行く, 逝く]
         default:
           description: |
-            不正な入力、不整合な読み・文節境界、実現できない文節境界などのエラー。
-            HTTP ステータスと本文形式は未確定。
+            400: JSON・フィールド型・読み・確定候補・文節境界の不整合。
+            413: 要求本文が 1 MiB を超える。
+            415: Content-Type が application/json ではない。
+            422: 指定境界を実現できない、または Mozc の分割が書記素を分断する。
+            502: Mozc の応答の読みや候補が不整合。
+            503: Mozc に接続できない、または変換に失敗した。
+            504: 変換処理の期限超過・キャンセル。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
     Reading:
       type: string
+      minLength: 1
       description: |
         読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
         応答は正規化後の文字列。文節操作はその文字列を基準にする。
         文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-        Unicode の使用バージョンと半角カナ変換の厳密な対象範囲は未確定。
+        書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
+        全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
     Candidates:
       type: array
       description: 変換候補の文字列配列。候補数の上限は未確定。
@@ -199,6 +216,7 @@ components:
           maxItems: 1
           items:
             type: string
+            minLength: 1
     ConvertResponse:
       type: object
       required: [reading, segments]

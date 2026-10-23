@@ -72,7 +72,8 @@ type ConfirmedSegment struct {
 	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
 	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
 	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// Unicode の使用バージョンと半角カナ変換の厳密な対象範囲は未確定。
+	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
+	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
 	Reading Reading `json:"reading"`
 }
 
@@ -84,7 +85,8 @@ type ConvertRequest struct {
 	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
 	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
 	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// Unicode の使用バージョンと半角カナ変換の厳密な対象範囲は未確定。
+	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
+	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
 	Reading Reading `json:"reading"`
 
 	// Segments 省略または空配列なら自動分割。
@@ -98,17 +100,24 @@ type ConvertResponse struct {
 	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
 	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
 	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// Unicode の使用バージョンと半角カナ変換の厳密な対象範囲は未確定。
+	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
+	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
 	Reading Reading `json:"reading"`
 
 	// Segments 読み順の文節。各 reading の連結は全体の reading と一致する。
 	Segments []SegmentResponse `json:"segments"`
 }
 
+// ErrorResponse defines model for ErrorResponse.
+type ErrorResponse struct {
+	Message string `json:"message"`
+}
+
 // Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
 // 応答は正規化後の文字列。文節操作はその文字列を基準にする。
 // 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-// Unicode の使用バージョンと半角カナ変換の厳密な対象範囲は未確定。
+// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
+// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
 type Reading = string
 
 // SegmentRequest 未確定または確定済みの文節。
@@ -134,7 +143,8 @@ type UnconfirmedSegmentRequest struct {
 	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
 	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
 	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// Unicode の使用バージョンと半角カナ変換の厳密な対象範囲は未確定。
+	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
+	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
 	Reading Reading `json:"reading"`
 }
 
@@ -150,7 +160,8 @@ type UnconfirmedSegmentResponse struct {
 	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
 	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
 	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// Unicode の使用バージョンと半角カナ変換の厳密な対象範囲は未確定。
+	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
+	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
 	Reading Reading `json:"reading"`
 }
 
@@ -391,13 +402,21 @@ func (response Convert200JSONResponse) VisitConvertResponse(w http.ResponseWrite
 	return err
 }
 
-type ConvertdefaultResponse struct {
+type ConvertdefaultJSONResponse struct {
+	Body       ErrorResponse
 	StatusCode int
 }
 
-func (response ConvertdefaultResponse) VisitConvertResponse(w http.ResponseWriter) error {
+func (response ConvertdefaultJSONResponse) VisitConvertResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(response.StatusCode)
-	return nil
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetHealthRequestObject struct {

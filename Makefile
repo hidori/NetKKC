@@ -12,7 +12,7 @@ endif
 
 OAPI_CODEGEN_VERSION := v2.8.0
 
-.PHONY: up down generate build test test-integration clean
+.PHONY: up down generate build lint lint-fix test test-integration clean
 
 # Run on the host (WSL), not in the dev container.
 up:
@@ -28,6 +28,12 @@ generate:
 build:
 	@mkdir -p bin
 	$(GO) build -o bin/kkc-server .
+
+lint:
+	golangci-lint run
+
+lint-fix:
+	golangci-lint run --fix
 
 test:
 	$(GO) test ./...

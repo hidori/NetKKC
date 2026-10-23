@@ -41,6 +41,8 @@ In the `dev` container:
 ```sh
 make generate          # Generate Go models and Echo server interfaces.
 make build             # Build bin/kkc-server.
+make lint              # Run golangci-lint.
+make lint-fix          # Run golangci-lint and apply automatic fixes.
 make test              # Run all tests, including real Mozc and HTTP round trips.
 make test-integration  # Same as test, without the test cache.
 ```

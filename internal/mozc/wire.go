@@ -47,7 +47,7 @@ func decode(data []byte) ([]field, error) {
 			n = protowire.ConsumeFieldValue(tag, kind, data)
 		}
 		if n < 0 {
-			return nil, fmt.Errorf("Mozc protobuf field %d: %w", tag, protowire.ParseError(n))
+			return nil, fmt.Errorf("mozc protobuf field %d: %w", tag, protowire.ParseError(n))
 		}
 		fields = append(fields, f)
 		data = data[n:]
@@ -113,7 +113,7 @@ func decodeOutput(data []byte) (output, error) {
 			result.config = f.data
 		case 11:
 			if f.value != 0 {
-				return output{}, fmt.Errorf("Mozc session failure (%d)", f.value)
+				return output{}, fmt.Errorf("mozc session failure (%d)", f.value)
 			}
 		case 14:
 			list, err := decode(f.data)
@@ -130,9 +130,10 @@ func decodeOutput(data []byte) (output, error) {
 				}
 				var c candidate
 				for _, f := range fields {
-					if f.number == 1 {
+					switch f.number {
+					case 1:
 						c.id = int32(f.value)
-					} else if f.number == 4 {
+					case 4:
 						c.text = string(f.data)
 					}
 				}

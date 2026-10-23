@@ -52,7 +52,7 @@ func (c *Client) call(ctx context.Context, input []byte) (output, error) {
 	if err != nil {
 		return output{}, fmt.Errorf("connect to Mozc: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	deadline, _ := ctx.Deadline()
 	if err := conn.SetDeadline(deadline); err != nil {
 		return output{}, err
@@ -97,7 +97,7 @@ func (c *Client) Configure(ctx context.Context) error {
 		settings[int(f.number)] = f.value
 	}
 	if settings[20] != 1 || settings[41] != 2 || settings[50] != 2 {
-		return errors.New("Mozc did not enable incognito, NO_HISTORY and MSIME key bindings")
+		return errors.New("mozc did not enable incognito, NO_HISTORY and MSIME key bindings")
 	}
 	return nil
 }
@@ -113,7 +113,7 @@ func (c *Client) create(ctx context.Context) (*session, error) {
 		return nil, err
 	}
 	if out.id == 0 {
-		return nil, errors.New("Mozc returned an empty session ID")
+		return nil, errors.New("mozc returned an empty session ID")
 	}
 	return &session{client: c, id: out.id}, nil
 }

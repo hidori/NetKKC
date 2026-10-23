@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-var ErrBoundaries = errors.New("Mozc cannot realize the requested segment boundaries")
+var ErrBoundaries = errors.New("mozc cannot realize the requested segment boundaries")
 
 type Segment struct {
 	Reading    string
@@ -45,7 +45,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 	// reading becomes the reference for the rest of the conversion.
 	reading = joined(out)
 	if reading == "" {
-		return nil, errors.New("Mozc returned no segments")
+		return nil, errors.New("mozc returned no segments")
 	}
 	if len(boundaries) > 0 {
 		if strings.Join(boundaries, "") != reading {
@@ -81,7 +81,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 			}
 		}
 		if len(segment.Candidates) == 0 {
-			return nil, errors.New("Mozc returned no candidates for a segment")
+			return nil, errors.New("mozc returned no candidates for a segment")
 		}
 		result = append(result, segment)
 		if i+1 < len(out.segments) {
@@ -161,7 +161,7 @@ func joined(out output) string {
 
 func checkReading(out output, reading string) error {
 	if joined(out) != reading {
-		return errors.New("Mozc changed the reading during conversion")
+		return errors.New("mozc changed the reading during conversion")
 	}
 	return nil
 }

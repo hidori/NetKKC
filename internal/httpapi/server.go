@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -34,6 +35,7 @@ var _ api.StrictServerInterface = (*Server)(nil)
 
 func New(converter Converter) *echo.Echo {
 	e := echo.New()
+	e.JSONSerializer = strictJSONSerializer{}
 	e.Use(middleware.Recover(), middleware.BodyLimit("1M"))
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -48,6 +50,29 @@ func New(converter Converter) *echo.Echo {
 	})
 	api.RegisterHandlers(e, api.NewStrictHandler(&Server{converter: converter}, nil))
 	return e
+}
+
+type strictJSONSerializer struct {
+	echo.DefaultJSONSerializer
+}
+
+func (strictJSONSerializer) Deserialize(c echo.Context, target any) error {
+	data, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return err
+	}
+	if !utf8.Valid(data) {
+		return badRequest("request body must be valid UTF-8 JSON")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(target); err != nil {
+		return badRequest("request body must contain one JSON object with valid field types")
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return badRequest("request body must contain only one JSON value")
+	}
+	return nil
 }
 
 func (s *Server) GetHealth(context.Context, api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {

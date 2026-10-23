@@ -101,6 +101,8 @@ func TestInvalidRequestsDoNotCallMozc(t *testing.T) {
 	}))
 	for _, body := range []string{
 		``, `null`, `{}`, `{"reading":""}`, `{"reading":12}`, `{"reading":"か",`,
+		`{"reading":"か"}{"reading":"き"}`, `{"reading":"か"} trailing text`,
+		"{\"reading\":\"\xff\"}",
 		`{"reading":"か","segments":[null]}`,
 		`{"reading":"か","segments":[{"confirmed":false}]}`,
 		`{"reading":"か","segments":[{"reading":"き"}]}`,
@@ -167,6 +169,24 @@ func TestHealthAndRemovedGreeting(t *testing.T) {
 	}
 }
 
+func TestContentTypeAndBodyLimit(t *testing.T) {
+	e := New(converterFunc(func(context.Context, string, []string) ([]mozc.Segment, error) {
+		t.Fatal("invalid transport input reached Mozc")
+		return nil, nil
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/convert", strings.NewReader(`{"reading":"か"}`))
+	req.Header.Set("Content-Type", "text/plain")
+	response := httptest.NewRecorder()
+	e.ServeHTTP(response, req)
+	if response.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("want 415, got %d: %s", response.Code, response.Body)
+	}
+	response = request(e, http.MethodPost, "/convert", `{"reading":"`+strings.Repeat("a", 1<<20)+`"}`)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("want 413, got %d: %s", response.Code, response.Body)
+	}
+}
+
 func TestHTTPMozcIntegration(t *testing.T) {
 	profile := os.Getenv("NETKKC_TEST_MOZC_PROFILE")
 	if profile == "" {
@@ -194,7 +214,7 @@ func TestHTTPMozcIntegration(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &converted); err != nil {
 		t.Fatal(err)
 	}
-	if len(converted.Segments) == 0 || converted.Reading != "こんにちは、きょうはいいお天気ですね" {
+	if len(converted.Segments) < 3 || converted.Reading != "こんにちは、きょうはいいお天気ですね" {
 		t.Fatalf("unexpected response: %s", response.Body)
 	}
 	var joined strings.Builder
@@ -212,11 +232,25 @@ func TestHTTPMozcIntegration(t *testing.T) {
 	if joined.String() != converted.Reading {
 		t.Fatal("segment readings do not preserve input")
 	}
+	selected := converted.Segments[2].Candidates[0]
+	converted.Segments[0].Candidates = []string{"再生成で捨てられる候補"}
 	body, err := json.Marshal(converted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response := request(e, http.MethodPost, "/convert", string(body)); response.Code != http.StatusOK {
+	response = request(e, http.MethodPost, "/convert", string(body))
+	if response.Code != http.StatusOK {
 		t.Fatalf("reconversion failed: %d: %s", response.Code, response.Body)
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &converted); err != nil {
+		t.Fatal(err)
+	}
+	if !converted.Segments[2].Confirmed || len(converted.Segments[2].Candidates) != 1 || converted.Segments[2].Candidates[0] != selected {
+		t.Fatalf("confirmed candidate changed: %s", response.Body)
+	}
+	for _, value := range converted.Segments[0].Candidates {
+		if value == "再生成で捨てられる候補" {
+			t.Fatal("unconfirmed client candidates were used")
+		}
 	}
 }

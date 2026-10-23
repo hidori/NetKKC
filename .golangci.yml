@@ -9,6 +9,7 @@ linters:
     - exhaustruct_v5
     - funlen
     - gosmopolitan
+    - mnd
     - noinlineerr
     - testpackage
     - wsl
@@ -20,3 +21,7 @@ linters:
       - linters:
           - revive
         text: "package-comments"
+      - path: _test\.go
+        linters:
+          - goconst
+          - varnamelen

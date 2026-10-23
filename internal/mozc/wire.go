@@ -92,16 +92,16 @@ func decodeOutput(data []byte) (commandOutput, error) {
 
 	for _, field := range fields {
 		switch field.number {
-		case 1:
+		case outputID:
 			result.id = field.value
-		case 5:
+		case outputPreedit:
 			preedit, err := decode(field.data)
 			if err != nil {
 				return commandOutput{}, err
 			}
 
 			for _, part := range preedit {
-				if part.number != 2 {
+				if part.number != preeditSegmentGroup {
 					continue
 				}
 
@@ -114,31 +114,32 @@ func decodeOutput(data []byte) (commandOutput, error) {
 
 				for _, field := range fields {
 					switch field.number {
-					case 3:
-						segment.focused = field.value == 2
-					case 4:
+					case segmentAnnotation:
+						segment.focused = field.value == annotationHighlight
+					case segmentValue:
 						segment.text = string(field.data)
-					case 6:
+					case segmentKey:
 						segment.reading = string(field.data)
+					default: // Unknown fields are skipped.
 					}
 				}
 
 				result.segments = append(result.segments, segment)
 			}
-		case 9:
+		case outputConfig:
 			result.config = field.data
-		case 11:
-			if field.value != 0 {
+		case outputErrorCode:
+			if field.value != errorCodeSessionSuccess {
 				return commandOutput{}, fmt.Errorf("mozc session failure (%d)", field.value)
 			}
-		case 14:
+		case outputAllCandidateWords:
 			list, err := decode(field.data)
 			if err != nil {
 				return commandOutput{}, err
 			}
 
 			for _, entry := range list {
-				if entry.number != 2 {
+				if entry.number != candidateListCandidates {
 					continue
 				}
 
@@ -151,15 +152,17 @@ func decodeOutput(data []byte) (commandOutput, error) {
 
 				for _, field := range fields {
 					switch field.number {
-					case 1:
+					case candidateWordID:
 						cand.id = int32(field.value)
-					case 4:
+					case candidateWordValue:
 						cand.text = string(field.data)
+					default: // Unknown fields are skipped.
 					}
 				}
 
 				result.candidates = append(result.candidates, cand)
 			}
+		default: // Unknown fields are skipped.
 		}
 	}
 

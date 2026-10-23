@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hidori/NetKKC/internal/errs"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 const maxResponseBytes = 4 << 20
@@ -97,12 +98,12 @@ func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) 
 func (c *Client) Configure(ctx context.Context) error {
 	// Incognito + NO_HISTORY disable use/update of personal history. MSIME fixes
 	// the key bindings used for focus and resize commands across installations.
-	config := number(nil, 20, 1)
-	config = number(config, 41, 2)
-	config = number(config, 50, 2)
-	input := number(nil, 1, 7) // SET_CONFIG
+	config := number(nil, configIncognitoMode, 1)
+	config = number(config, configSessionKeymap, sessionKeymapMSIME)
+	config = number(config, configHistoryLearningLevel, historyNoHistory)
+	input := number(nil, inputType, commandSetConfig)
 
-	out, err := c.call(ctx, message(input, 5, config))
+	out, err := c.call(ctx, message(input, inputConfig, config))
 	if err != nil {
 		return err
 	}
@@ -112,12 +113,13 @@ func (c *Client) Configure(ctx context.Context) error {
 		return err
 	}
 
-	settings := make(map[int]uint64)
+	settings := make(map[protowire.Number]uint64)
 	for _, f := range fields {
-		settings[int(f.number)] = f.value
+		settings[f.number] = f.value
 	}
 
-	if settings[20] != 1 || settings[41] != 2 || settings[50] != 2 {
+	if settings[configIncognitoMode] != 1 || settings[configSessionKeymap] != sessionKeymapMSIME ||
+		settings[configHistoryLearningLevel] != historyNoHistory {
 		return errors.New("mozc did not enable incognito, NO_HISTORY and MSIME key bindings")
 	}
 
@@ -130,7 +132,7 @@ type session struct {
 }
 
 func (c *Client) create(ctx context.Context) (*session, error) {
-	out, err := c.call(ctx, number(nil, 1, 1)) // CREATE_SESSION
+	out, err := c.call(ctx, number(nil, inputType, commandCreateSession))
 	if err != nil {
 		return nil, err
 	}
@@ -146,30 +148,30 @@ func (s *session) close() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, _ = s.client.call(ctx, number(number(nil, 1, 2), 2, s.id)) // DELETE_SESSION
+	_, _ = s.client.call(ctx, number(number(nil, inputType, commandDeleteSession), inputID, s.id))
 }
 
 func (s *session) command(ctx context.Context, kind uint64, args []byte) (commandOutput, error) {
-	input := number(number(nil, 1, 5), 2, s.id) // SEND_COMMAND
+	input := number(number(nil, inputType, commandSendCommand), inputID, s.id)
 
-	return s.client.call(ctx, message(input, 4, append(number(nil, 1, kind), args...)))
+	return s.client.call(ctx, message(input, inputCommand, append(number(nil, sessionCommandType, kind), args...)))
 }
 
 func (s *session) key(ctx context.Context, key []byte) (commandOutput, error) {
-	input := number(number(nil, 1, 3), 2, s.id) // SEND_KEY
-	input = number(input, 14, 0)                // request_suggestion=false
+	input := number(number(nil, inputType, commandSendKey), inputID, s.id)
+	input = number(input, inputRequestSuggestion, 0)
 
-	return s.client.call(ctx, message(input, 3, key))
+	return s.client.call(ctx, message(input, inputKey, key))
 }
 
 func (s *session) begin(ctx context.Context, reading string) (commandOutput, error) {
-	if _, err := s.command(ctx, 22, number(nil, 3, 1)); err != nil { // TURN_ON_IME, HIRAGANA
+	if _, err := s.command(ctx, sessionCommandTurnOnIME, number(nil, sessionCommandCompositionMode, compositionModeHiragana)); err != nil {
 		return commandOutput{}, err
 	}
 	// AS_IS preserves punctuation, spaces, mixed scripts and literal input.
-	if _, err := s.key(ctx, number(message(nil, 5, []byte(reading)), 6, 1)); err != nil {
+	if _, err := s.key(ctx, number(message(nil, keyKeyString, []byte(reading)), keyInputStyle, inputStyleAsIs)); err != nil {
 		return commandOutput{}, err
 	}
 
-	return s.key(ctx, number(nil, 3, 4)) // SPACE starts conversion
+	return s.key(ctx, number(nil, keySpecialKey, specialKeySpace)) // SPACE starts conversion
 }

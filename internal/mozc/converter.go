@@ -65,7 +65,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 		for focused(out) > 0 {
 			previous := focused(out)
 
-			out, err = sess.key(ctx, number(nil, 3, 6)) // LEFT
+			out, err = sess.key(ctx, number(nil, keySpecialKey, specialKeyLeft))
 			if err != nil {
 				return nil, err
 			}
@@ -99,7 +99,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 		result = append(result, segment)
 
 		if i+1 < len(out.segments) {
-			out, err = sess.key(ctx, number(nil, 3, 7)) // RIGHT
+			out, err = sess.key(ctx, number(nil, keySpecialKey, specialKeyRight))
 			if err != nil {
 				return nil, err
 			}
@@ -125,14 +125,14 @@ func (s *session) resize(ctx context.Context, out commandOutput, reading string,
 				break
 			}
 
-			key := uint64(7) // SHIFT+RIGHT expands one Unicode code point in Mozc.
+			key := uint64(specialKeyRight) // SHIFT+RIGHT expands one Unicode code point in Mozc.
 			if utf8.RuneCountInString(current) >= utf8.RuneCountInString(target) {
-				key = 6 // SHIFT+LEFT shrinks one Unicode code point.
+				key = specialKeyLeft // SHIFT+LEFT shrinks one Unicode code point.
 			}
 
 			var err error
 
-			out, err = s.key(ctx, number(number(nil, 3, key), 4, 4))
+			out, err = s.key(ctx, number(number(nil, keySpecialKey, key), keyModifierKeys, modifierShift))
 			if err != nil {
 				return commandOutput{}, err
 			}
@@ -149,7 +149,7 @@ func (s *session) resize(ctx context.Context, out commandOutput, reading string,
 		if i+1 < len(boundaries) {
 			var err error
 
-			out, err = s.key(ctx, number(nil, 3, 7))
+			out, err = s.key(ctx, number(nil, keySpecialKey, specialKeyRight))
 			if err != nil {
 				return commandOutput{}, err
 			}

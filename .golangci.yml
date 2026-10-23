@@ -14,6 +14,8 @@ linters:
     - testpackage
     - wsl
   settings:
+    exhaustive:
+      default-signifies-exhaustive: true
     lll:
       line-length: 140
     varnamelen:

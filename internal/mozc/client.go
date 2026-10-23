@@ -24,15 +24,15 @@ type Client struct {
 	Timeout time.Duration
 }
 
-func (c *Client) call(ctx context.Context, input []byte) (output, error) {
+func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) {
 	path, err := os.ReadFile(filepath.Join(c.Profile, ".session.ipc"))
 	if err != nil {
-		return output{}, fmt.Errorf("read Mozc IPC discovery: %w", err)
+		return commandOutput{}, fmt.Errorf("read Mozc IPC discovery: %w", err)
 	}
 
 	fields, err := decode(path)
 	if err != nil {
-		return output{}, fmt.Errorf("decode Mozc IPC discovery: %w", err)
+		return commandOutput{}, fmt.Errorf("decode Mozc IPC discovery: %w", err)
 	}
 
 	var key string
@@ -44,7 +44,7 @@ func (c *Client) call(ctx context.Context, input []byte) (output, error) {
 	}
 
 	if !ipcKey.MatchString(key) {
-		return output{}, errors.New("invalid Mozc IPC discovery key")
+		return commandOutput{}, errors.New("invalid Mozc IPC discovery key")
 	}
 
 	timeout := c.Timeout
@@ -57,34 +57,34 @@ func (c *Client) call(ctx context.Context, input []byte) (output, error) {
 
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", "@tmp/.mozc."+key+".session")
 	if err != nil {
-		return output{}, fmt.Errorf("connect to Mozc: %w", err)
+		return commandOutput{}, fmt.Errorf("connect to Mozc: %w", err)
 	}
 
 	defer func() { _ = conn.Close() }()
 
 	deadline, _ := ctx.Deadline()
 	if err := conn.SetDeadline(deadline); err != nil {
-		return output{}, err
+		return commandOutput{}, err
 	}
 
 	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
 	defer stop()
 
 	if _, err := io.Copy(conn, bytes.NewReader(input)); err != nil {
-		return output{}, fmt.Errorf("send Mozc request: %w", err)
+		return commandOutput{}, fmt.Errorf("send Mozc request: %w", err)
 	}
 
 	if err := conn.(*net.UnixConn).CloseWrite(); err != nil {
-		return output{}, err
+		return commandOutput{}, err
 	}
 
 	data, err := io.ReadAll(io.LimitReader(conn, maxResponseBytes+1))
 	if err != nil {
-		return output{}, fmt.Errorf("receive Mozc response: %w", err)
+		return commandOutput{}, fmt.Errorf("receive Mozc response: %w", err)
 	}
 
 	if len(data) == 0 || len(data) > maxResponseBytes {
-		return output{}, errors.New("invalid Mozc response size")
+		return commandOutput{}, errors.New("invalid Mozc response size")
 	}
 
 	return decodeOutput(data)
@@ -147,26 +147,26 @@ func (s *session) close() {
 	_, _ = s.client.call(ctx, number(number(nil, 1, 2), 2, s.id)) // DELETE_SESSION
 }
 
-func (s *session) command(ctx context.Context, kind uint64, args []byte) (output, error) {
+func (s *session) command(ctx context.Context, kind uint64, args []byte) (commandOutput, error) {
 	input := number(number(nil, 1, 5), 2, s.id) // SEND_COMMAND
 
 	return s.client.call(ctx, message(input, 4, append(number(nil, 1, kind), args...)))
 }
 
-func (s *session) key(ctx context.Context, key []byte) (output, error) {
+func (s *session) key(ctx context.Context, key []byte) (commandOutput, error) {
 	input := number(number(nil, 1, 3), 2, s.id) // SEND_KEY
 	input = number(input, 14, 0)                // request_suggestion=false
 
 	return s.client.call(ctx, message(input, 3, key))
 }
 
-func (s *session) begin(ctx context.Context, reading string) (output, error) {
+func (s *session) begin(ctx context.Context, reading string) (commandOutput, error) {
 	if _, err := s.command(ctx, 22, number(nil, 3, 1)); err != nil { // TURN_ON_IME, HIRAGANA
-		return output{}, err
+		return commandOutput{}, err
 	}
 	// AS_IS preserves punctuation, spaces, mixed scripts and literal input.
 	if _, err := s.key(ctx, number(message(nil, 5, []byte(reading)), 6, 1)); err != nil {
-		return output{}, err
+		return commandOutput{}, err
 	}
 
 	return s.key(ctx, number(nil, 3, 4)) // SPACE starts conversion

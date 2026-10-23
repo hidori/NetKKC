@@ -11,7 +11,7 @@ import (
 // https://github.com/google/mozc/tree/2.29.5160.102/src/protocol
 // https://github.com/google/mozc/blob/2.29.5160.102/src/ipc/ipc.proto
 // Unknown protobuf fields are skipped to allow compatible newer servers.
-type field struct {
+type protoField struct {
 	number protowire.Number
 	value  uint64
 	data   []byte
@@ -29,8 +29,8 @@ func message(dst []byte, tag protowire.Number, data []byte) []byte {
 	return protowire.AppendBytes(dst, data)
 }
 
-func decode(data []byte) ([]field, error) {
-	var fields []field
+func decode(data []byte) ([]protoField, error) {
+	var fields []protoField
 
 	for len(data) > 0 {
 		tag, kind, size := protowire.ConsumeTag(data)
@@ -39,15 +39,15 @@ func decode(data []byte) ([]field, error) {
 		}
 
 		data = data[size:]
-		fld := field{number: tag}
+		field := protoField{number: tag}
 
 		switch kind {
 		case protowire.VarintType:
-			fld.value, size = protowire.ConsumeVarint(data)
+			field.value, size = protowire.ConsumeVarint(data)
 		case protowire.BytesType:
-			fld.data, size = protowire.ConsumeBytes(data)
+			field.data, size = protowire.ConsumeBytes(data)
 		case protowire.StartGroupType:
-			fld.data, size = protowire.ConsumeGroup(tag, data)
+			field.data, size = protowire.ConsumeGroup(tag, data)
 		default:
 			size = protowire.ConsumeFieldValue(tag, kind, data)
 		}
@@ -56,7 +56,7 @@ func decode(data []byte) ([]field, error) {
 			return nil, fmt.Errorf("mozc protobuf field %d: %w", tag, protowire.ParseError(size))
 		}
 
-		fields = append(fields, fld)
+		fields = append(fields, field)
 		data = data[size:]
 	}
 
@@ -74,29 +74,29 @@ type candidate struct {
 	text string
 }
 
-type output struct {
+type commandOutput struct {
 	id         uint64
 	segments   []preeditSegment
 	candidates []candidate
 	config     []byte
 }
 
-func decodeOutput(data []byte) (output, error) {
+func decodeOutput(data []byte) (commandOutput, error) {
 	fields, err := decode(data)
 	if err != nil {
-		return output{}, err
+		return commandOutput{}, err
 	}
 
-	var result output
+	var result commandOutput
 
-	for _, fld := range fields {
-		switch fld.number {
+	for _, field := range fields {
+		switch field.number {
 		case 1:
-			result.id = fld.value
+			result.id = field.value
 		case 5:
-			preedit, err := decode(fld.data)
+			preedit, err := decode(field.data)
 			if err != nil {
-				return output{}, err
+				return commandOutput{}, err
 			}
 
 			for _, part := range preedit {
@@ -106,34 +106,34 @@ func decodeOutput(data []byte) (output, error) {
 
 				fields, err := decode(part.data)
 				if err != nil {
-					return output{}, err
+					return commandOutput{}, err
 				}
 
 				var segment preeditSegment
 
-				for _, fld := range fields {
-					switch fld.number {
+				for _, field := range fields {
+					switch field.number {
 					case 3:
-						segment.focused = fld.value == 2
+						segment.focused = field.value == 2
 					case 4:
-						segment.text = string(fld.data)
+						segment.text = string(field.data)
 					case 6:
-						segment.reading = string(fld.data)
+						segment.reading = string(field.data)
 					}
 				}
 
 				result.segments = append(result.segments, segment)
 			}
 		case 9:
-			result.config = fld.data
+			result.config = field.data
 		case 11:
-			if fld.value != 0 {
-				return output{}, fmt.Errorf("mozc session failure (%d)", fld.value)
+			if field.value != 0 {
+				return commandOutput{}, fmt.Errorf("mozc session failure (%d)", field.value)
 			}
 		case 14:
-			list, err := decode(fld.data)
+			list, err := decode(field.data)
 			if err != nil {
-				return output{}, err
+				return commandOutput{}, err
 			}
 
 			for _, entry := range list {
@@ -143,17 +143,17 @@ func decodeOutput(data []byte) (output, error) {
 
 				fields, err := decode(entry.data)
 				if err != nil {
-					return output{}, err
+					return commandOutput{}, err
 				}
 
 				var cand candidate
 
-				for _, fld := range fields {
-					switch fld.number {
+				for _, field := range fields {
+					switch field.number {
 					case 1:
-						cand.id = int32(fld.value)
+						cand.id = int32(field.value)
 					case 4:
-						cand.text = string(fld.data)
+						cand.text = string(field.data)
 					}
 				}
 

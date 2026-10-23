@@ -111,11 +111,11 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 	return result, nil
 }
 
-func (s *session) resize(ctx context.Context, out output, reading string, boundaries []string) (output, error) {
+func (s *session) resize(ctx context.Context, out commandOutput, reading string, boundaries []string) (commandOutput, error) {
 	for i, target := range boundaries {
 		for steps := 0; ; steps++ {
 			if i >= len(out.segments) || focused(out) != i || steps > utf8.RuneCountInString(reading) {
-				return output{}, ErrBoundaries
+				return commandOutput{}, ErrBoundaries
 			}
 
 			current := out.segments[i].reading
@@ -132,15 +132,15 @@ func (s *session) resize(ctx context.Context, out output, reading string, bounda
 
 			out, err = s.key(ctx, number(number(nil, 3, key), 4, 4))
 			if err != nil {
-				return output{}, err
+				return commandOutput{}, err
 			}
 
 			if err := checkReading(out, reading); err != nil {
-				return output{}, err
+				return commandOutput{}, err
 			}
 
 			if i >= len(out.segments) || out.segments[i].reading == current {
-				return output{}, ErrBoundaries
+				return commandOutput{}, ErrBoundaries
 			}
 		}
 
@@ -149,25 +149,25 @@ func (s *session) resize(ctx context.Context, out output, reading string, bounda
 
 			out, err = s.key(ctx, number(nil, 3, 7))
 			if err != nil {
-				return output{}, err
+				return commandOutput{}, err
 			}
 		}
 	}
 
 	if len(out.segments) != len(boundaries) {
-		return output{}, ErrBoundaries
+		return commandOutput{}, ErrBoundaries
 	}
 
 	for i, segment := range out.segments {
 		if segment.reading != boundaries[i] {
-			return output{}, ErrBoundaries
+			return commandOutput{}, ErrBoundaries
 		}
 	}
 
 	return out, nil
 }
 
-func focused(out output) int {
+func focused(out commandOutput) int {
 	for i, segment := range out.segments {
 		if segment.focused {
 			return i
@@ -177,7 +177,7 @@ func focused(out output) int {
 	return -1
 }
 
-func joined(out output) string {
+func joined(out commandOutput) string {
 	var text strings.Builder
 	for _, segment := range out.segments {
 		text.WriteString(segment.reading)
@@ -186,7 +186,7 @@ func joined(out output) string {
 	return text.String()
 }
 
-func checkReading(out output, reading string) error {
+func checkReading(out commandOutput, reading string) error {
 	if joined(out) != reading {
 		return errors.New("mozc changed the reading during conversion")
 	}

@@ -1,0 +1,227 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+info:
+  title: NetKKC API
+  version: 0.1.0
+  description: |
+    Mozc を利用するステートレスなかな漢字変換 API。
+    このファイルを API モデルとサーバーひな型のコード生成元とする。
+    Go の生成器には oapi-codegen を使用し、Echo 用サーバーとモデルを生成する。
+    生成器は OpenAPI 3.1 対応の oapi-codegen v2.8.0 に固定する。
+
+    変換 API は未実装。POST /convert は未確定のメソッド・パスを具体化するための暫定案。
+    エラーの HTTP ステータス・本文形式、入力上限、空の読みの扱いは未確定。
+    examples は構造を示す例であり、Mozc の分割や候補順を保証しない。
+paths:
+  /healsh:
+    get:
+      operationId: getHealth
+      summary: ヘルスチェック
+      description: パスは /healsh。Hello, World! のエンドポイントは提供しない。
+      responses:
+        '200':
+          description: サーバーが HTTP 要求に応答可能。
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [OK]
+              example: OK
+  /convert:
+    post:
+      operationId: convert
+      summary: 読みを文節ごとのかな漢字候補に変換する
+      description: |
+        初回と再変換で同じ API を使用する。メソッドとパスは暫定。
+        segments の省略・空配列は Mozc による自動分割を意味する。
+        指定時は各要素の reading で文節境界を指定する。
+
+        読みはサーバー側で半角カナの全角化と NFC 正規化を行う。
+        文字列全体への NFKC は行わず、独立した濁点・半濁点記号は自動結合しない。
+        正規化後の各文節の reading の連結が全体の reading と一致し、
+        境界が拡張書記素クラスタ（UAX #29）の途中にないことを検証する。
+        これらの要素間制約はモデルの生成だけでは保証されず、サーバーで検証する。
+
+        confirmed の省略・false は未確定として候補を生成し直す。
+        未確定文節の要求内の candidates は使用しない。
+        confirmed が true なら candidates に確定候補1件だけを要求し、
+        その文節の読み・境界・確定候補を維持する。
+        文節の確定順序に制約はなく、途中や末尾だけの確定も許容する。
+        指定境界を処理できない場合は、自動分割に戻さずエラーにする。
+
+        サーバーは前回の要求との一致を確認しない。
+        別の文字列も今回の独立した変換要求として処理し、
+        確定候補が前回の応答に含まれていたかは照合しない。
+        確定状態の保持はクライアントの責務であり、学習や独立した確定通知 API は設けない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertRequest'
+            examples:
+              initial:
+                summary: 初回の自動分割
+                value:
+                  reading: きょうはとうきょうにいく
+              automaticSegmentation:
+                summary: 空配列でも自動分割
+                value:
+                  reading: きょうはとうきょうにいく
+                  segments: []
+              reconvert:
+                summary: 途中の文節だけを確定して再変換
+                value:
+                  reading: きょうはとうきょうにいく
+                  segments:
+                    - reading: きょうは
+                    - reading: とうきょうに
+                      confirmed: true
+                      candidates: [東京に]
+                    - reading: いく
+                      confirmed: false
+              ignoredCandidates:
+                summary: 未確定文節の候補は送っても使用しない
+                value:
+                  reading: いく
+                  segments:
+                    - reading: いく
+                      candidates: [行く]
+      responses:
+        '200':
+          description: 正規化後の読みと文節ごとの変換結果。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConvertResponse'
+              examples:
+                initial:
+                  summary: 自動分割結果
+                  value:
+                    reading: きょうはとうきょうにいく
+                    segments:
+                      - reading: きょうは
+                        confirmed: false
+                        candidates: [今日は, 教派]
+                      - reading: とうきょうに
+                        confirmed: false
+                        candidates: [東京に]
+                      - reading: いく
+                        confirmed: false
+                        candidates: [行く, 逝く]
+                reconverted:
+                  summary: 確定候補を維持して未確定文節の候補を生成
+                  value:
+                    reading: きょうはとうきょうにいく
+                    segments:
+                      - reading: きょうは
+                        confirmed: false
+                        candidates: [今日は, 教派]
+                      - reading: とうきょうに
+                        confirmed: true
+                        candidates: [東京に]
+                      - reading: いく
+                        confirmed: false
+                        candidates: [行く, 逝く]
+        default:
+          description: |
+            不正な入力、不整合な読み・文節境界、実現できない文節境界などのエラー。
+            HTTP ステータスと本文形式は未確定。
+components:
+  schemas:
+    Reading:
+      type: string
+      description: |
+        読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
+        応答は正規化後の文字列。文節操作はその文字列を基準にする。
+        文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
+        Unicode の使用バージョンと半角カナ変換の厳密な対象範囲は未確定。
+    Candidates:
+      type: array
+      description: 変換候補の文字列配列。候補数の上限は未確定。
+      items:
+        type: string
+    ConvertRequest:
+      type: object
+      required: [reading]
+      properties:
+        reading:
+          $ref: '#/components/schemas/Reading'
+        segments:
+          type: array
+          description: |
+            省略または空配列なら自動分割。
+            指定時は正規化後の各文節の reading の連結が全体の reading と一致すること。
+            要求間の状態や候補全体を再送する必要はない。
+          items:
+            $ref: '#/components/schemas/SegmentRequest'
+    SegmentRequest:
+      description: |
+        未確定または確定済みの文節。
+        confirmed が省略された場合は、候補数にかかわらず未確定として扱う。
+      oneOf:
+        - $ref: '#/components/schemas/UnconfirmedSegmentRequest'
+        - $ref: '#/components/schemas/ConfirmedSegment'
+    UnconfirmedSegmentRequest:
+      type: object
+      required: [reading]
+      properties:
+        reading:
+          $ref: '#/components/schemas/Reading'
+        confirmed:
+          type: boolean
+          enum: [false]
+          default: false
+          description: 省略と false は同義。読みと指定境界から候補を生成し直す。
+        candidates:
+          type: array
+          description: |
+            省略可能。送られても再変換には使用しない。
+            1件だけでも確定済みとは扱わない。
+          items:
+            type: string
+    ConfirmedSegment:
+      type: object
+      description: |
+        確定済み文節。再要求と応答に共通の形式。
+        candidates は確定した候補1件だけとし、候補一覧全体や別の text フィールドは不要。
+        読み・境界・確定候補を維持し、新たな候補一覧は生成しない。
+      required: [reading, confirmed, candidates]
+      properties:
+        reading:
+          $ref: '#/components/schemas/Reading'
+        confirmed:
+          type: boolean
+          enum: [true]
+        candidates:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            type: string
+    ConvertResponse:
+      type: object
+      required: [reading, segments]
+      properties:
+        reading:
+          $ref: '#/components/schemas/Reading'
+        segments:
+          type: array
+          description: 読み順の文節。各 reading の連結は全体の reading と一致する。
+          items:
+            $ref: '#/components/schemas/SegmentResponse'
+    SegmentResponse:
+      oneOf:
+        - $ref: '#/components/schemas/UnconfirmedSegmentResponse'
+        - $ref: '#/components/schemas/ConfirmedSegment'
+    UnconfirmedSegmentResponse:
+      type: object
+      required: [reading, confirmed, candidates]
+      properties:
+        reading:
+          $ref: '#/components/schemas/Reading'
+        confirmed:
+          type: boolean
+          enum: [false]
+        candidates:
+          $ref: '#/components/schemas/Candidates'

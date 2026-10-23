@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/hidori/NetKKC/internal/errs"
 )
 
 var ErrBoundaries = errors.New("mozc cannot realize the requested segment boundaries")
@@ -30,7 +32,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 	case c.gate <- struct{}{}:
 		defer func() { <-c.gate }()
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, errs.Wrap(ctx.Err())
 	}
 
 	sess, err := c.client.create(ctx)

@@ -3,6 +3,7 @@ package mozc
 import (
 	"fmt"
 
+	"github.com/hidori/NetKKC/internal/errs"
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
@@ -35,7 +36,7 @@ func decode(data []byte) ([]protoField, error) {
 	for len(data) > 0 {
 		tag, kind, size := protowire.ConsumeTag(data)
 		if size < 0 {
-			return nil, protowire.ParseError(size)
+			return nil, errs.Wrap(protowire.ParseError(size))
 		}
 
 		data = data[size:]

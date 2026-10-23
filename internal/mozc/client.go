@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/hidori/NetKKC/internal/errs"
 )
 
 const maxResponseBytes = 4 << 20
@@ -64,7 +66,7 @@ func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) 
 
 	deadline, _ := ctx.Deadline()
 	if err := conn.SetDeadline(deadline); err != nil {
-		return commandOutput{}, err
+		return commandOutput{}, errs.Wrap(err)
 	}
 
 	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
@@ -75,7 +77,7 @@ func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) 
 	}
 
 	if err := conn.(*net.UnixConn).CloseWrite(); err != nil {
-		return commandOutput{}, err
+		return commandOutput{}, errs.Wrap(err)
 	}
 
 	data, err := io.ReadAll(io.LimitReader(conn, maxResponseBytes+1))

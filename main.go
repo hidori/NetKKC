@@ -11,13 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hidori/NetKKC/internal/errs"
 	"github.com/hidori/NetKKC/internal/httpapi"
 	"github.com/hidori/NetKKC/internal/mozc"
 )
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("%+v", err)
 	}
 }
 
@@ -54,7 +55,7 @@ func run() error {
 	}()
 
 	if err := app.Start(*address); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+		return errs.Wrap(err)
 	}
 
 	return nil
@@ -69,7 +70,7 @@ func waitForMozc(ctx context.Context, client *mozc.Client) error {
 
 		select {
 		case <-ctx.Done():
-			return err
+			return errs.Wrap(err)
 		case <-time.After(100 * time.Millisecond):
 		}
 	}

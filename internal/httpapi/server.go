@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime"
@@ -14,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hidori/NetKKC/internal/api"
+	"github.com/hidori/NetKKC/internal/errs"
 	"github.com/hidori/NetKKC/internal/mozc"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -57,7 +59,7 @@ type strictJSONSerializer struct {
 func (strictJSONSerializer) Deserialize(ctx echo.Context, target any) error {
 	data, err := io.ReadAll(ctx.Request().Body)
 	if err != nil {
-		return err
+		return errs.Wrap(err)
 	}
 
 	if !utf8.Valid(data) {
@@ -163,7 +165,7 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 				return nil, echo.NewHTTPError(http.StatusGatewayTimeout, "conversion timed out or was cancelled")
 			}
 
-			slog.Error("Mozc conversion failed", "error", err)
+			slog.Error("Mozc conversion failed", "error", fmt.Sprintf("%+v", err))
 
 			return nil, echo.NewHTTPError(http.StatusServiceUnavailable, "Mozc is unavailable")
 		}
@@ -190,7 +192,7 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 		}
 
 		if err != nil {
-			return nil, err
+			return nil, errs.Wrap(err)
 		}
 	}
 

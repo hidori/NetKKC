@@ -63,6 +63,7 @@ func TestMozcIntegration(t *testing.T) {
 		{"expanded", "きょうはとうきょうにいく", []string{"きょうはと", "うきょうに", "いく"}},
 		{"shrunk", "きょうはとうきょうにいく", []string{"きょう", "はとうきょうに", "いく"}},
 		{"single", "きょうはとうきょうにいく", []string{"きょうはとうきょうにいく"}},
+		{"rewritten", "ＡＢＣのてすと", nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			segments, err := converter.Convert(ctx, test.reading, test.boundaries)
@@ -76,7 +77,7 @@ func TestMozcIntegration(t *testing.T) {
 					t.Fatal("missing candidates")
 				}
 			}
-			if strings.Join(readings, "") != test.reading {
+			if want := strings.Replace(test.reading, "ＡＢＣ", "ABC", 1); strings.Join(readings, "") != want {
 				t.Fatalf("reading changed: %v", readings)
 			}
 			if test.boundaries != nil && strings.Join(readings, "|") != strings.Join(test.boundaries, "|") {

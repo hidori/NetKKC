@@ -3,7 +3,6 @@ package mozc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -42,10 +41,16 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 	if err != nil {
 		return nil, err
 	}
-	if err := checkReading(out, reading); err != nil {
-		return nil, err
+	// Mozc may rewrite the input (e.g. full-width ASCII to half-width), so its
+	// reading becomes the reference for the rest of the conversion.
+	reading = joined(out)
+	if reading == "" {
+		return nil, errors.New("Mozc returned no segments")
 	}
 	if len(boundaries) > 0 {
+		if strings.Join(boundaries, "") != reading {
+			return nil, ErrBoundaries
+		}
 		out, err = s.resize(ctx, out, reading, boundaries)
 		if err != nil {
 			return nil, err
@@ -146,16 +151,17 @@ func focused(out output) int {
 	return -1
 }
 
-func checkReading(out output, reading string) error {
+func joined(out output) string {
 	var text strings.Builder
 	for _, segment := range out.segments {
-		if segment.reading == "" {
-			return errors.New("Mozc returned an empty segment reading")
-		}
 		text.WriteString(segment.reading)
 	}
-	if len(out.segments) == 0 || text.String() != reading {
-		return fmt.Errorf("Mozc did not preserve the input reading")
+	return text.String()
+}
+
+func checkReading(out output, reading string) error {
+	if joined(out) != reading {
+		return errors.New("Mozc changed the reading during conversion")
 	}
 	return nil
 }

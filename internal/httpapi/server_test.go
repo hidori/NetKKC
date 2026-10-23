@@ -29,18 +29,6 @@ func request(e *echo.Echo, method, path, body string) *httptest.ResponseRecorder
 	return response
 }
 
-func TestNormalize(t *testing.T) {
-	for _, test := range []struct{ input, want string }{
-		{"か\u3099", "が"}, {"は\u309a", "ぱ"}, {"が", "が"},
-		{"ｶﾞﾊﾟ", "ガパ"}, {"か゛は゜", "か゛は゜"},
-		{"①㍑ﬃＡ", "①㍑ﬃＡ"}, {"､｡", "､｡"},
-	} {
-		if got := Normalize(test.input); got != test.want {
-			t.Errorf("Normalize(%q) = %q, want %q", test.input, got, test.want)
-		}
-	}
-}
-
 func TestConfirmedMiddleSegment(t *testing.T) {
 	calls := 0
 	e := New(converterFunc(func(_ context.Context, reading string, boundaries []string) ([]mozc.Segment, error) {
@@ -114,9 +102,6 @@ func TestInvalidRequestsDoNotCallMozc(t *testing.T) {
 		`{"reading":"か","segments":[{"reading":"か","confirmed":true,"candidates":[""]}]}`,
 		`{"reading":"か","segments":[{"reading":"か","candidates":null}]}`,
 		`{"reading":"か","segments":[{"reading":"か","candidates":[1]}]}`,
-		`{"reading":"か\u3099","segments":[{"reading":"か"},{"reading":"\u3099"}]}`,
-		`{"reading":"葛\ufe00","segments":[{"reading":"葛"},{"reading":"\ufe00"}]}`,
-		`{"reading":"👩‍💻","segments":[{"reading":"👩"},{"reading":"‍💻"}]}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			response := request(e, http.MethodPost, "/convert", body)
@@ -127,18 +112,19 @@ func TestInvalidRequestsDoNotCallMozc(t *testing.T) {
 	}
 }
 
-func TestNormalizeBeforeConversion(t *testing.T) {
-	for _, suffix := range []string{``, `,"segments":[]`, `,"segments":[{"reading":"か\u3099ｶﾞ"}]`} {
-		e := New(converterFunc(func(_ context.Context, reading string, boundaries []string) ([]mozc.Segment, error) {
-			if reading != "がガ" {
-				t.Fatalf("not normalized: %q", reading)
-			}
-			return []mozc.Segment{{Reading: reading, Candidates: []string{"がガ"}}}, nil
-		}))
-		response := request(e, http.MethodPost, "/convert", `{"reading":"か\u3099ｶﾞ"`+suffix+`}`)
-		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"reading":"がガ"`) {
-			t.Fatalf("%d: %s", response.Code, response.Body)
+func TestResponseUsesMozcReading(t *testing.T) {
+	e := New(converterFunc(func(_ context.Context, reading string, _ []string) ([]mozc.Segment, error) {
+		if reading != "ＡＢＣのてすと" {
+			t.Fatalf("reading was modified before Mozc: %q", reading)
 		}
+		return []mozc.Segment{
+			{Reading: "ABCの", Candidates: []string{"ABCの"}},
+			{Reading: "てすと", Candidates: []string{"テスト"}},
+		}, nil
+	}))
+	response := request(e, http.MethodPost, "/convert", `{"reading":"ＡＢＣのてすと"}`)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"reading":"ABCのてすと"`) {
+		t.Fatalf("%d: %s", response.Code, response.Body)
 	}
 }
 

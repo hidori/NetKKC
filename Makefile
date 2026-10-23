@@ -11,13 +11,8 @@ export GOCACHE ?= /workspace/.netkkc/gocache
 endif
 
 OAPI_CODEGEN_VERSION := v2.8.0
-MOZC_STATE_DIR ?= $(if $(CLOUD_GO),/workspace/.netkkc/docker-mozc,$(CURDIR)/.local/mozc)
-export MOZC_STATE_DIR
-export MOZC_PROFILE_DIR ?= $(MOZC_STATE_DIR)/mozc
-export MOZC_DOCKER_IMAGE ?= netkkc-mozc:dev
-export MOZC_DOCKER_CONTAINER ?= netkkc-mozc-$(shell id -u)
 
-.PHONY: generate build test run clean mozc-build mozc-up mozc-down test-integration
+.PHONY: generate build test test-integration clean
 
 generate:
 	@mkdir -p internal/api
@@ -30,21 +25,9 @@ build:
 test:
 	$(GO) test ./...
 
-mozc-build:
-	bash scripts/mozc-docker.sh build
-
-mozc-up: build mozc-build
-	bash scripts/mozc-docker.sh start
-	./bin/kkc-server -check-mozc -mozc-profile "$(MOZC_PROFILE_DIR)"
-
-mozc-down:
-	bash scripts/mozc-docker.sh stop
-
-test-integration: mozc-up
-	NETKKC_TEST_MOZC_PROFILE="$(MOZC_PROFILE_DIR)" $(GO) test -count=1 ./...
-
-run: mozc-up
-	./bin/kkc-server
+# Requires NETKKC_TEST_MOZC_PROFILE (set in the dev container).
+test-integration:
+	$(GO) test -count=1 ./...
 
 clean:
 	$(GO) clean .

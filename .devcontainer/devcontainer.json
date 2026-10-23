@@ -1,13 +1,15 @@
 {
-	"name": "Go",
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
+	"name": "NetKKC",
+	"dockerComposeFile": "../compose.yaml",
+	"service": "dev",
+	"workspaceFolder": "/workspaces/NetKKC",
+	"remoteUser": "vscode",
+	"updateRemoteUserUID": true,
+	"shutdownAction": "stopCompose",
 	"mounts": [
 		"source=${localEnv:HOME}/.ssh/id_ed25519.pub,target=/tmp/netkkc-github.pub,type=bind,readonly"
 	],
 	"remoteEnv": {
 		"GIT_SSH_COMMAND": "ssh -o IdentitiesOnly=yes -i /tmp/netkkc-github.pub"
-	},
-	"postStartCommand": "bash .devcontainer/start-mozc.sh"
+	}
 }

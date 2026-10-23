@@ -36,11 +36,9 @@ paths:
         segments の省略・空配列は Mozc による自動分割を意味する。
         指定時は各要素の reading で文節境界を指定する。
 
-        読みはサーバー側で半角カナの全角化と NFC 正規化を行う。
-        文字列全体への NFKC は行わず、独立した濁点・半濁点記号は自動結合しない。
-        正規化後の各文節の reading の連結が全体の reading と一致し、
-        境界が拡張書記素クラスタ（UAX #29）の途中にないことを検証する。
-        これらの要素間制約はモデルの生成だけでは保証されず、サーバーで検証する。
+        読みは加工せずに Mozc に渡す。
+        各文節の reading の連結が全体の reading と一致することを検証する。
+        この要素間制約はモデルの生成だけでは保証されず、サーバーで検証する。
 
         confirmed の省略・false は未確定として候補を生成し直す。
         未確定文節の要求内の candidates は使用しない。
@@ -89,7 +87,7 @@ paths:
                       candidates: [行く]
       responses:
         '200':
-          description: 正規化後の読みと文節ごとの変換結果。
+          description: Mozc が返した読みと文節ごとの変換結果。
           content:
             application/json:
               schema:
@@ -128,8 +126,8 @@ paths:
             400: JSON・フィールド型・読み・確定候補・文節境界の不整合。
             413: 要求本文が 1 MiB を超える。
             415: Content-Type が application/json ではない。
-            422: 指定境界を実現できない、または Mozc の分割が書記素を分断する。
-            502: Mozc の応答の読みや候補が不整合。
+            422: 指定境界を実現できない（Mozc が読みを書き換えた場合を含む）。
+            502: Mozc が候補を返さない。
             503: Mozc に接続できない、または変換に失敗した。
             504: 変換処理の期限超過・キャンセル。
           content:
@@ -148,11 +146,9 @@ components:
       type: string
       minLength: 1
       description: |
-        読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
-        応答は正規化後の文字列。文節操作はその文字列を基準にする。
-        文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-        書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
-        全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
+        読み文字列。サーバーは加工しない。
+        応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
+        文節操作は応答の読みを基準にする。
     Candidates:
       type: array
       description: 変換候補の文字列配列。候補数の上限は未確定。
@@ -168,7 +164,7 @@ components:
           type: array
           description: |
             省略または空配列なら自動分割。
-            指定時は正規化後の各文節の reading の連結が全体の reading と一致すること。
+            指定時は各文節の reading の連結が全体の reading と一致すること。
             要求間の状態や候補全体を再送する必要はない。
           items:
             $ref: '#/components/schemas/SegmentRequest'

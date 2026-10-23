@@ -22,17 +22,24 @@ Kana-Kanji conversion for embedded and edge devices over pluggable transports.
 
 ## Development Environment
 
-The API contract is defined in `openapi.yaml` using OpenAPI 3.1. See `SPEC.md`
-for conversion behavior. Models and Echo server interfaces are generated with
-oapi-codegen v2.8.0. Use Go 1.27.1 as pinned in `mise.toml`.
+The API contract is defined in `openapi.yaml` using OpenAPI 3.1. See
+`doc/SPEC.md` for conversion behavior. Models and Echo server interfaces are
+generated with oapi-codegen v2.8.0. Use Go 1.27.1 as pinned in `mise.toml`.
+
+Open the repository in the VS Code Dev Container. Docker Compose (`compose.yaml`)
+starts three services that share one network namespace:
+
+- `dev`: the development container.
+- `api`: the API server with hot reload (air), published on `127.0.0.1:8080`.
+- `mozc`: a dedicated `mozc_server`. Its profile is `.local/mozc`.
+
+In the `dev` container:
 
 ```sh
 make generate          # Generate Go models and Echo server interfaces.
 make build             # Build bin/kkc-server.
-make test              # Run unit tests.
-make run               # Build/start Docker Mozc, check readiness, then start the API on 8080.
-make test-integration  # Run all tests, including real Mozc and HTTP round-trip tests.
-make mozc-down         # Stop the Mozc container; retain its profile.
+make test              # Run all tests, including real Mozc and HTTP round trips.
+make test-integration  # Same as test, without the test cache.
 ```
 
 `POST /convert` converts a reading. For example:
@@ -43,20 +50,10 @@ curl -sS -H 'Content-Type: application/json' \
   http://127.0.0.1:8080/convert
 ```
 
-Mozc runs in Docker while the Go API runs on the Linux host, sharing the host
-network and a dedicated Mozc profile directory. This requires a Linux Docker
-Engine; Docker Desktop on other platforms is not covered. The binary accepts
-`-mozc-profile /path/to/profile` and `-listen :8080`.
-
 See `AGENTS.md` for detailed development notes and the current implementation
 status.
 
 ## Planned
 
-- Run the API server and `mozc_server` together in a VS Code Dev Container.
-- Isolate the runtime, build dependencies, and development tools from the host
-  to keep the environment reproducible.
-- Use `.devcontainer/devcontainer.json` and a single Dockerfile. No database or
-  other separate services are planned initially, so Docker Compose is not needed.
 - Consider packaging the API server and `mozc_server` in the same container for
-  deployment as well.
+  deployment.

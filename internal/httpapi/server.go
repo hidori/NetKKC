@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -18,9 +17,6 @@ import (
 	"github.com/hidori/NetKKC/internal/mozc"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/rivo/uniseg"
-	"golang.org/x/text/unicode/norm"
-	"golang.org/x/text/width"
 )
 
 type Converter interface {
@@ -79,25 +75,11 @@ func (s *Server) GetHealth(context.Context, api.GetHealthRequestObject) (api.Get
 	return api.GetHealth200TextResponse("OK"), nil
 }
 
-// Normalize only widens half-width katakana (U+FF66..U+FF9F), then applies NFC.
-// Other compatibility characters and spacing dakuten/handakuten are preserved.
-func Normalize(reading string) string {
-	var widened strings.Builder
-	for _, r := range reading {
-		if r >= '\uff66' && r <= '\uff9f' {
-			widened.WriteString(width.Widen.String(string(r)))
-		} else {
-			widened.WriteRune(r)
-		}
-	}
-	return norm.NFC.String(widened.String())
-}
-
 func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) (api.ConvertResponseObject, error) {
 	if request.Body == nil || request.Body.Reading == "" || !utf8.ValidString(request.Body.Reading) {
 		return nil, badRequest("reading must be a non-empty UTF-8 string")
 	}
-	reading := Normalize(request.Body.Reading)
+	reading := request.Body.Reading
 	var boundaries []string
 	var confirmations []*string
 	if request.Body.Segments != nil {
@@ -118,7 +100,7 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 					return nil, badRequest(key + " must not be null")
 				}
 			}
-			boundaries = append(boundaries, Normalize(segment.Reading))
+			boundaries = append(boundaries, segment.Reading)
 			var confirmed *string
 			if segment.Confirmed != nil && bool(*segment.Confirmed) {
 				if segment.Candidates == nil || len(*segment.Candidates) != 1 || (*segment.Candidates)[0] == "" {
@@ -130,13 +112,8 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 			confirmations = append(confirmations, confirmed)
 		}
 	}
-	if len(boundaries) > 0 {
-		if strings.Join(boundaries, "") != reading {
-			return nil, badRequest("segment readings must concatenate to the normalized reading")
-		}
-		if !validBoundaries(reading, boundaries) {
-			return nil, badRequest("a segment boundary splits a grapheme cluster")
-		}
+	if len(boundaries) > 0 && strings.Join(boundaries, "") != reading {
+		return nil, badRequest("segment readings must concatenate to the reading")
 	}
 	allConfirmed := len(confirmations) > 0
 	for _, text := range confirmations {
@@ -164,21 +141,11 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 			return nil, echo.NewHTTPError(http.StatusServiceUnavailable, "Mozc is unavailable")
 		}
 	}
-	var returned []string
-	for _, part := range converted {
-		returned = append(returned, part.Reading)
-	}
-	if strings.Join(returned, "") != reading || len(returned) == 0 {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "Mozc returned an inconsistent reading")
-	}
-	if len(boundaries) > 0 && !slices.Equal(returned, boundaries) {
-		return nil, echo.NewHTTPError(http.StatusUnprocessableEntity, "Mozc changed the requested boundaries")
-	}
-	if !validBoundaries(reading, returned) {
-		return nil, echo.NewHTTPError(http.StatusUnprocessableEntity, "Mozc split a grapheme cluster")
-	}
-	response := api.ConvertResponse{Reading: reading, Segments: make([]api.SegmentResponse, len(converted))}
+	// The response reading is Mozc's, which may differ from the request
+	// (Mozc rewrites full-width ASCII to half-width, for example).
+	response := api.ConvertResponse{Segments: make([]api.SegmentResponse, len(converted))}
 	for i, segment := range converted {
+		response.Reading += segment.Reading
 		var err error
 		if len(confirmations) > i && confirmations[i] != nil {
 			err = response.Segments[i].FromConfirmedSegment(api.ConfirmedSegment{
@@ -201,21 +168,4 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 
 func badRequest(message string) error {
 	return echo.NewHTTPError(http.StatusBadRequest, message)
-}
-
-func validBoundaries(reading string, parts []string) bool {
-	ends := map[int]bool{0: true}
-	iterator := uniseg.NewGraphemes(reading)
-	for iterator.Next() {
-		_, end := iterator.Positions()
-		ends[end] = true
-	}
-	position := 0
-	for _, part := range parts {
-		position += len(part)
-		if part == "" || !ends[position] {
-			return false
-		}
-	}
-	return position == len(reading)
 }

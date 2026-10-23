@@ -1,0 +1,51 @@
+x-workspace-env: &workspace-env
+  MOZC_PROFILE_DIR: /workspaces/NetKKC/.local/mozc
+
+services:
+  dev:
+    build: .devcontainer
+    network_mode: service:mozc
+    working_dir: /workspaces/NetKKC
+    environment:
+      <<: *workspace-env
+      NETKKC_TEST_MOZC_PROFILE: /workspaces/NetKKC/.local/mozc
+    volumes:
+      - .:/workspaces/NetKKC
+    command: sleep infinity
+    depends_on:
+      - mozc
+
+  api:
+    build: .devcontainer
+    network_mode: service:mozc
+    working_dir: /workspaces/NetKKC
+    user: root
+    entrypoint: ["sh", ".devcontainer/run-as-workspace-owner.sh"]
+    environment:
+      <<: *workspace-env
+      HOME: /tmp
+      GOPATH: /tmp/go
+    volumes:
+      - .:/workspaces/NetKKC:ro
+    command:
+      - air
+      - --tmp_dir=/tmp/air
+      - --build.cmd=go build -o /tmp/air/kkc-server .
+      - --build.bin=/tmp/air/kkc-server
+    depends_on:
+      - mozc
+
+  mozc:
+    build:
+      context: docker
+      dockerfile: mozc.Dockerfile
+    working_dir: /workspaces/NetKKC
+    user: root
+    entrypoint: ["sh", ".devcontainer/run-as-workspace-owner.sh"]
+    environment:
+      XDG_CONFIG_HOME: /workspaces/NetKKC/.local
+    volumes:
+      - .:/workspaces/NetKKC
+    command: ["/usr/lib/mozc/mozc_server", "--timeout=-1"]
+    ports:
+      - "127.0.0.1:8080:8080"

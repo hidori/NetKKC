@@ -69,11 +69,9 @@ type ConfirmedSegment struct {
 	Candidates []string                  `json:"candidates"`
 	Confirmed  ConfirmedSegmentConfirmed `json:"confirmed"`
 
-	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
-	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
-	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
-	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
+	// Reading 読み文字列。サーバーは加工しない。
+	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
+	// 文節操作は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
 }
 
@@ -82,26 +80,22 @@ type ConfirmedSegmentConfirmed bool
 
 // ConvertRequest defines model for ConvertRequest.
 type ConvertRequest struct {
-	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
-	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
-	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
-	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
+	// Reading 読み文字列。サーバーは加工しない。
+	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
+	// 文節操作は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
 
 	// Segments 省略または空配列なら自動分割。
-	// 指定時は正規化後の各文節の reading の連結が全体の reading と一致すること。
+	// 指定時は各文節の reading の連結が全体の reading と一致すること。
 	// 要求間の状態や候補全体を再送する必要はない。
 	Segments *[]SegmentRequest `json:"segments,omitempty"`
 }
 
 // ConvertResponse defines model for ConvertResponse.
 type ConvertResponse struct {
-	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
-	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
-	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
-	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
+	// Reading 読み文字列。サーバーは加工しない。
+	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
+	// 文節操作は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
 
 	// Segments 読み順の文節。各 reading の連結は全体の reading と一致する。
@@ -113,11 +107,9 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
-// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
-// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
-// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
+// Reading 読み文字列。サーバーは加工しない。
+// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
+// 文節操作は応答の読みを基準にする。
 type Reading = string
 
 // SegmentRequest 未確定または確定済みの文節。
@@ -140,11 +132,9 @@ type UnconfirmedSegmentRequest struct {
 	// Confirmed 省略と false は同義。読みと指定境界から候補を生成し直す。
 	Confirmed *UnconfirmedSegmentRequestConfirmed `json:"confirmed,omitempty"`
 
-	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
-	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
-	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
-	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
+	// Reading 読み文字列。サーバーは加工しない。
+	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
+	// 文節操作は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
 }
 
@@ -157,11 +147,9 @@ type UnconfirmedSegmentResponse struct {
 	Candidates Candidates                          `json:"candidates"`
 	Confirmed  UnconfirmedSegmentResponseConfirmed `json:"confirmed"`
 
-	// Reading 読み文字列。サーバーは半角カナを全角化し、NFC 正規化する。
-	// 応答は正規化後の文字列。文節操作はその文字列を基準にする。
-	// 文節長の単位は拡張書記素クラスタで、バイト数や UTF-16 コードユニット数ではない。
-	// 書記素境界は uniseg v0.4.7（Unicode 15.0.0）に従う。
-	// 全角化対象は U+FF66..U+FF9F。半角句読点 U+FF61..U+FF65 は変更しない。
+	// Reading 読み文字列。サーバーは加工しない。
+	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
+	// 文節操作は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
 }
 

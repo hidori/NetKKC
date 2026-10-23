@@ -8,6 +8,7 @@ linters:
     - exhaustruct
     - exhaustruct_v5
     - funlen
+    - gomodguard # Replaced by gomodguard_v2.
     - gosmopolitan
     - mnd
     - noinlineerr

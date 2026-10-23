@@ -19,23 +19,28 @@ type field struct {
 
 func number(dst []byte, tag protowire.Number, value uint64) []byte {
 	dst = protowire.AppendTag(dst, tag, protowire.VarintType)
+
 	return protowire.AppendVarint(dst, value)
 }
 
 func message(dst []byte, tag protowire.Number, data []byte) []byte {
 	dst = protowire.AppendTag(dst, tag, protowire.BytesType)
+
 	return protowire.AppendBytes(dst, data)
 }
 
 func decode(data []byte) ([]field, error) {
 	var fields []field
+
 	for len(data) > 0 {
 		tag, kind, n := protowire.ConsumeTag(data)
 		if n < 0 {
 			return nil, protowire.ParseError(n)
 		}
+
 		data = data[n:]
 		f := field{number: tag}
+
 		switch kind {
 		case protowire.VarintType:
 			f.value, n = protowire.ConsumeVarint(data)
@@ -46,12 +51,15 @@ func decode(data []byte) ([]field, error) {
 		default:
 			n = protowire.ConsumeFieldValue(tag, kind, data)
 		}
+
 		if n < 0 {
 			return nil, fmt.Errorf("mozc protobuf field %d: %w", tag, protowire.ParseError(n))
 		}
+
 		fields = append(fields, f)
 		data = data[n:]
 	}
+
 	return fields, nil
 }
 
@@ -78,7 +86,9 @@ func decodeOutput(data []byte) (output, error) {
 	if err != nil {
 		return output{}, err
 	}
+
 	var result output
+
 	for _, f := range fields {
 		switch f.number {
 		case 1:
@@ -88,15 +98,19 @@ func decodeOutput(data []byte) (output, error) {
 			if err != nil {
 				return output{}, err
 			}
+
 			for _, part := range preedit {
 				if part.number != 2 {
 					continue
 				}
+
 				fields, err := decode(part.data)
 				if err != nil {
 					return output{}, err
 				}
+
 				var segment preeditSegment
+
 				for _, f := range fields {
 					switch f.number {
 					case 3:
@@ -107,6 +121,7 @@ func decodeOutput(data []byte) (output, error) {
 						segment.reading = string(f.data)
 					}
 				}
+
 				result.segments = append(result.segments, segment)
 			}
 		case 9:
@@ -120,15 +135,19 @@ func decodeOutput(data []byte) (output, error) {
 			if err != nil {
 				return output{}, err
 			}
+
 			for _, entry := range list {
 				if entry.number != 2 {
 					continue
 				}
+
 				fields, err := decode(entry.data)
 				if err != nil {
 					return output{}, err
 				}
+
 				var c candidate
+
 				for _, f := range fields {
 					switch f.number {
 					case 1:
@@ -137,9 +156,11 @@ func decodeOutput(data []byte) (output, error) {
 						c.text = string(f.data)
 					}
 				}
+
 				result.candidates = append(result.candidates, c)
 			}
 		}
 	}
+
 	return result, nil
 }

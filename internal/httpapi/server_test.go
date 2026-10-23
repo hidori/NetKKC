@@ -24,8 +24,10 @@ func (f converterFunc) Convert(ctx context.Context, reading string, boundaries [
 func request(e *echo.Echo, method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+
 	response := httptest.NewRecorder()
 	e.ServeHTTP(response, req)
+
 	return response
 }
 
@@ -33,15 +35,18 @@ func TestConfirmedMiddleSegment(t *testing.T) {
 	calls := 0
 	e := New(converterFunc(func(_ context.Context, reading string, boundaries []string) ([]mozc.Segment, error) {
 		calls++
+
 		if reading != "きょうはとうきょうにいく" || strings.Join(boundaries, "|") != "きょうは|とうきょうに|いく" {
 			t.Fatalf("unexpected backend input: %s %v", reading, boundaries)
 		}
+
 		return []mozc.Segment{
 			{Reading: "きょうは", Candidates: []string{"今日は"}},
 			{Reading: "とうきょうに", Candidates: []string{"東京に", "トウキョウニ"}},
 			{Reading: "いく", Candidates: []string{"行く", "逝く"}},
 		}, nil
 	}))
+
 	response := request(e, http.MethodPost, "/convert", `{
 		"reading":"きょうはとうきょうにいく",
 		"segments":[
@@ -52,6 +57,7 @@ func TestConfirmedMiddleSegment(t *testing.T) {
 	if response.Code != http.StatusOK || calls != 1 {
 		t.Fatalf("status %d, calls %d: %s", response.Code, calls, response.Body)
 	}
+
 	var result struct {
 		Segments []struct {
 			Confirmed  bool     `json:"confirmed"`
@@ -61,9 +67,11 @@ func TestConfirmedMiddleSegment(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
+
 	if len(result.Segments) != 3 || result.Segments[0].Confirmed || !result.Segments[1].Confirmed || result.Segments[2].Confirmed {
 		t.Fatalf("incorrect confirmation flags: %s", response.Body)
 	}
+
 	if strings.Join(result.Segments[1].Candidates, "|") != "クライアントが確定した文字列" ||
 		strings.Join(result.Segments[0].Candidates, "|") != "今日は" ||
 		strings.Join(result.Segments[2].Candidates, "|") != "行く|逝く" {
@@ -74,8 +82,10 @@ func TestConfirmedMiddleSegment(t *testing.T) {
 func TestFullyConfirmedDoesNotCallMozc(t *testing.T) {
 	e := New(converterFunc(func(context.Context, string, []string) ([]mozc.Segment, error) {
 		t.Fatal("fully confirmed request must not call Mozc")
+
 		return nil, nil
 	}))
+
 	response := request(e, http.MethodPost, "/convert", `{"reading":"か","segments":[{"reading":"か","confirmed":true,"candidates":["蚊"]}]}`)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"candidates":["蚊"]`) {
 		t.Fatalf("%d: %s", response.Code, response.Body)
@@ -85,8 +95,10 @@ func TestFullyConfirmedDoesNotCallMozc(t *testing.T) {
 func TestInvalidRequestsDoNotCallMozc(t *testing.T) {
 	e := New(converterFunc(func(context.Context, string, []string) ([]mozc.Segment, error) {
 		t.Fatal("invalid request reached Mozc")
+
 		return nil, nil
 	}))
+
 	for _, body := range []string{
 		``, `null`, `{}`, `{"reading":""}`, `{"reading":12}`, `{"reading":"か",`,
 		`{"reading":"か"}{"reading":"き"}`, `{"reading":"か"} trailing text`,
@@ -117,11 +129,13 @@ func TestResponseUsesMozcReading(t *testing.T) {
 		if reading != "ＡＢＣのてすと" {
 			t.Fatalf("reading was modified before Mozc: %q", reading)
 		}
+
 		return []mozc.Segment{
 			{Reading: "ABCの", Candidates: []string{"ABCの"}},
 			{Reading: "てすと", Candidates: []string{"テスト"}},
 		}, nil
 	}))
+
 	response := request(e, http.MethodPost, "/convert", `{"reading":"ＡＢＣのてすと"}`)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"reading":"ABCのてすと"`) {
 		t.Fatalf("%d: %s", response.Code, response.Body)
@@ -137,6 +151,7 @@ func TestBackendErrors(t *testing.T) {
 		{errors.New("connection refused"), http.StatusServiceUnavailable},
 	} {
 		e := New(converterFunc(func(context.Context, string, []string) ([]mozc.Segment, error) { return nil, test.err }))
+
 		response := request(e, http.MethodPost, "/convert", `{"reading":"か"}`)
 		if response.Code != test.status {
 			t.Fatalf("want %d, got %d: %s", test.status, response.Code, response.Body)
@@ -146,10 +161,12 @@ func TestBackendErrors(t *testing.T) {
 
 func TestHealthAndRemovedGreeting(t *testing.T) {
 	e := New(nil)
+
 	response := request(e, http.MethodGet, "/healsh", "")
 	if response.Code != http.StatusOK || response.Body.String() != "OK" || response.Header().Get("Content-Type") != "text/plain" {
 		t.Fatalf("incorrect health response: %+v", response)
 	}
+
 	if response := request(e, http.MethodGet, "/", ""); response.Code != http.StatusNotFound {
 		t.Fatalf("root endpoint must be removed, got %d", response.Code)
 	}
@@ -158,15 +175,19 @@ func TestHealthAndRemovedGreeting(t *testing.T) {
 func TestContentTypeAndBodyLimit(t *testing.T) {
 	e := New(converterFunc(func(context.Context, string, []string) ([]mozc.Segment, error) {
 		t.Fatal("invalid transport input reached Mozc")
+
 		return nil, nil
 	}))
 	req := httptest.NewRequest(http.MethodPost, "/convert", strings.NewReader(`{"reading":"か"}`))
 	req.Header.Set("Content-Type", "text/plain")
+
 	response := httptest.NewRecorder()
 	e.ServeHTTP(response, req)
+
 	if response.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("want 415, got %d: %s", response.Code, response.Body)
 	}
+
 	response = request(e, http.MethodPost, "/convert", `{"reading":"`+strings.Repeat("a", 1<<20)+`"}`)
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("want 413, got %d: %s", response.Code, response.Body)
@@ -178,17 +199,23 @@ func TestHTTPMozcIntegration(t *testing.T) {
 	if profile == "" {
 		t.Skip("set NETKKC_TEST_MOZC_PROFILE to a dedicated running Mozc profile")
 	}
+
 	client := &mozc.Client{Profile: profile}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	if err := client.Configure(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	e := New(mozc.NewConverter(client))
+
 	response := request(e, http.MethodPost, "/convert", `{"reading":"こんにちは、きょうはいいお天気ですね"}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("%d: %s", response.Code, response.Body)
 	}
+
 	var converted struct {
 		Reading  string `json:"reading"`
 		Segments []struct {
@@ -200,40 +227,52 @@ func TestHTTPMozcIntegration(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &converted); err != nil {
 		t.Fatal(err)
 	}
+
 	if len(converted.Segments) < 3 || converted.Reading != "こんにちは、きょうはいいお天気ですね" {
 		t.Fatalf("unexpected response: %s", response.Body)
 	}
+
 	var joined strings.Builder
+
 	for i, segment := range converted.Segments {
 		if len(segment.Candidates) == 0 || segment.Confirmed {
 			t.Fatalf("missing candidates or unexpected confirmation: %s", response.Body)
 		}
+
 		joined.WriteString(segment.Reading)
+
 		if i == 2 {
 			segment.Confirmed = true
 			segment.Candidates = segment.Candidates[:1]
 			converted.Segments[i] = segment
 		}
 	}
+
 	if joined.String() != converted.Reading {
 		t.Fatal("segment readings do not preserve input")
 	}
+
 	selected := converted.Segments[2].Candidates[0]
 	converted.Segments[0].Candidates = []string{"再生成で捨てられる候補"}
+
 	body, err := json.Marshal(converted)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	response = request(e, http.MethodPost, "/convert", string(body))
 	if response.Code != http.StatusOK {
 		t.Fatalf("reconversion failed: %d: %s", response.Code, response.Body)
 	}
+
 	if err := json.Unmarshal(response.Body.Bytes(), &converted); err != nil {
 		t.Fatal(err)
 	}
+
 	if !converted.Segments[2].Confirmed || len(converted.Segments[2].Candidates) != 1 || converted.Segments[2].Candidates[0] != selected {
 		t.Fatalf("confirmed candidate changed: %s", response.Body)
 	}
+
 	for _, value := range converted.Segments[0].Candidates {
 		if value == "再生成で捨てられる候補" {
 			t.Fatal("unconfirmed client candidates were used")

@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  default: all
+  disable:
+    - depguard
+    - err113 # Comment out for production.
+    - exhaustruct
+    - exhaustruct_v5
+    - funlen
+    - gosmopolitan
+    - noinlineerr
+    - testpackage
+    - wsl
+  settings:
+    lll:
+      line-length: 140
+  exclusions:
+    rules:
+      - linters:
+          - revive
+        text: "package-comments"

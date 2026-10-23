@@ -22,13 +22,16 @@ func TestDecodeOutput(t *testing.T) {
 	data := message(number(nil, 1, 42), 5, preedit)
 	data = message(data, 14, message(nil, 2, word))
 	data = message(data, 100, []byte("unknown field"))
+
 	out, err := decodeOutput(data)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if out.id != 42 || len(out.segments) != 1 || out.segments[0].reading != "きょうは" || focused(out) != 0 {
 		t.Fatalf("incorrect session or segment: %+v", out)
 	}
+
 	if len(out.candidates) != 1 || out.candidates[0].id != -1 || out.candidates[0].text != "今日は" {
 		t.Fatalf("incorrect candidate: %+v", out.candidates)
 	}
@@ -47,13 +50,17 @@ func TestMozcIntegration(t *testing.T) {
 	if profile == "" {
 		t.Skip("set NETKKC_TEST_MOZC_PROFILE to a dedicated running Mozc profile")
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
 	client := &Client{Profile: profile}
 	if err := client.Configure(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	converter := NewConverter(client)
+
 	for _, test := range []struct {
 		name       string
 		reading    string
@@ -70,6 +77,7 @@ func TestMozcIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			var readings []string
 			for _, segment := range segments {
 				readings = append(readings, segment.Reading)
@@ -77,9 +85,11 @@ func TestMozcIntegration(t *testing.T) {
 					t.Fatal("missing candidates")
 				}
 			}
+
 			if want := strings.Replace(test.reading, "ＡＢＣ", "ABC", 1); strings.Join(readings, "") != want {
 				t.Fatalf("reading changed: %v", readings)
 			}
+
 			if test.boundaries != nil && strings.Join(readings, "|") != strings.Join(test.boundaries, "|") {
 				t.Fatalf("boundaries changed: %v", readings)
 			}

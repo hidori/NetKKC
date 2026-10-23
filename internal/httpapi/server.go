@@ -41,10 +41,12 @@ func New(converter Converter) *echo.Echo {
 					return echo.NewHTTPError(http.StatusUnsupportedMediaType, "Content-Type must be application/json")
 				}
 			}
+
 			return next(c)
 		}
 	})
 	api.RegisterHandlers(e, api.NewStrictHandler(&Server{converter: converter}, nil))
+
 	return e
 }
 
@@ -57,17 +59,21 @@ func (strictJSONSerializer) Deserialize(c echo.Context, target any) error {
 	if err != nil {
 		return err
 	}
+
 	if !utf8.Valid(data) {
 		return badRequest("request body must be valid UTF-8 JSON")
 	}
+
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := decoder.Decode(target); err != nil {
 		return badRequest("request body must contain one JSON object with valid field types")
 	}
+
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return badRequest("request body must contain only one JSON value")
 	}
+
 	return nil
 }
 
@@ -79,9 +85,14 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 	if request.Body == nil || request.Body.Reading == "" || !utf8.ValidString(request.Body.Reading) {
 		return nil, badRequest("reading must be a non-empty UTF-8 string")
 	}
+
 	reading := request.Body.Reading
-	var boundaries []string
-	var confirmations []*string
+
+	var (
+		boundaries    []string
+		confirmations []*string
+	)
+
 	if request.Body.Segments != nil {
 		for _, value := range *request.Body.Segments {
 			segment, err := value.AsUnconfirmedSegmentRequest()
@@ -91,35 +102,46 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 			// encoding/json treats null booleans as absent. The API accepts only
 			// actual booleans when confirmed is present, not null.
 			data, _ := value.MarshalJSON()
+
 			var fields map[string]json.RawMessage
 			if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
 				return nil, badRequest("each segment must be an object")
 			}
+
 			for _, key := range []string{"confirmed", "candidates"} {
 				if bytes.Equal(fields[key], []byte("null")) {
 					return nil, badRequest(key + " must not be null")
 				}
 			}
+
 			boundaries = append(boundaries, segment.Reading)
+
 			var confirmed *string
+
 			if segment.Confirmed != nil && bool(*segment.Confirmed) {
 				if segment.Candidates == nil || len(*segment.Candidates) != 1 || (*segment.Candidates)[0] == "" {
 					return nil, badRequest("confirmed segments require exactly one non-empty candidate")
 				}
+
 				text := (*segment.Candidates)[0]
 				confirmed = &text
 			}
+
 			confirmations = append(confirmations, confirmed)
 		}
 	}
+
 	if len(boundaries) > 0 && strings.Join(boundaries, "") != reading {
 		return nil, badRequest("segment readings must concatenate to the reading")
 	}
+
 	allConfirmed := len(confirmations) > 0
 	for _, text := range confirmations {
 		allConfirmed = allConfirmed && text != nil
 	}
+
 	var converted []mozc.Segment
+
 	if allConfirmed {
 		// A fully confirmed request needs no candidate generation or Mozc call.
 		for _, part := range boundaries {
@@ -128,16 +150,21 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 	} else {
 		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
+
 		var err error
+
 		converted, err = s.converter.Convert(ctx, reading, boundaries)
 		if err != nil {
 			if errors.Is(err, mozc.ErrBoundaries) {
 				return nil, echo.NewHTTPError(http.StatusUnprocessableEntity, "Mozc cannot realize the requested boundaries")
 			}
+
 			if ctx.Err() != nil {
 				return nil, echo.NewHTTPError(http.StatusGatewayTimeout, "conversion timed out or was cancelled")
 			}
+
 			slog.Error("Mozc conversion failed", "error", err)
+
 			return nil, echo.NewHTTPError(http.StatusServiceUnavailable, "Mozc is unavailable")
 		}
 	}
@@ -146,6 +173,7 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 	response := api.ConvertResponse{Segments: make([]api.SegmentResponse, len(converted))}
 	for i, segment := range converted {
 		response.Reading += segment.Reading
+
 		var err error
 		if len(confirmations) > i && confirmations[i] != nil {
 			err = response.Segments[i].FromConfirmedSegment(api.ConfirmedSegment{
@@ -155,14 +183,17 @@ func (s *Server) Convert(ctx context.Context, request api.ConvertRequestObject) 
 			if len(segment.Candidates) == 0 {
 				return nil, echo.NewHTTPError(http.StatusBadGateway, "Mozc returned no candidates")
 			}
+
 			err = response.Segments[i].FromUnconfirmedSegmentResponse(api.UnconfirmedSegmentResponse{
 				Reading: segment.Reading, Confirmed: false, Candidates: segment.Candidates,
 			})
 		}
+
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	return api.Convert200JSONResponse(response), nil
 }
 

@@ -32,6 +32,7 @@ VS Code Dev Container で開く。`compose.yaml` が次の 3 サービスを起�
   `mozc` と `api` は `.devcontainer/run-as-workspace-owner.sh` でワークスペースの所有者
   （uid/gid）として動く。`dev` は `updateRemoteUserUID` でホストの uid に合わせる。
 - Mozc のバージョンは `.devcontainer/Dockerfile.mozc` で固定している。
+- Dev Container を使わずに起動・停止する場合は、ホスト（WSL）で `make up` / `make down` を実行する。
 
 ## ビルドとテスト
 

@@ -33,6 +33,9 @@ starts three services that share one network namespace:
 - `api`: the API server with hot reload (air), published on `127.0.0.1:8080`.
 - `mozc`: a dedicated `mozc_server`. Its profile is `.local/mozc`.
 
+To start or stop the services without the Dev Container, run `make up` or
+`make down` on the host.
+
 In the `dev` container:
 
 ```sh

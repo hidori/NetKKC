@@ -12,7 +12,14 @@ endif
 
 OAPI_CODEGEN_VERSION := v2.8.0
 
-.PHONY: generate build test test-integration clean
+.PHONY: up down generate build test test-integration clean
+
+# Run on the host (WSL), not in the dev container.
+up:
+	docker compose up -d
+
+down:
+	docker compose down
 
 generate:
 	@mkdir -p internal/api

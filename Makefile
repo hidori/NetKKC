@@ -12,14 +12,7 @@ endif
 
 OAPI_CODEGEN_VERSION := v2.8.0
 
-.PHONY: up down generate build lint lint-fix test test-integration clean
-
-# Run on the host (WSL), not in the dev container.
-up:
-	docker compose up -d
-
-down:
-	docker compose down
+.PHONY: generate build lint lint-fix test test-integration clean up down
 
 generate:
 	@mkdir -p internal/api
@@ -45,3 +38,10 @@ test-integration:
 clean:
 	$(GO) clean .
 	rm -f bin/kkc-server
+
+# Run on the host (WSL), not in the dev container.
+up:
+	docker compose up -d
+
+down:
+	docker compose down

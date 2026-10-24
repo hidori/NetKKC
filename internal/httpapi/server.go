@@ -20,6 +20,12 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
+// Limits of candidates returned for each unconfirmed segment.
+const (
+	defaultCandidateLimit = 20
+	maxCandidateLimit     = 1000
+)
+
 type Converter interface {
 	Convert(ctx context.Context, reading string, boundaries []string) ([]mozc.Segment, error)
 }
@@ -108,6 +114,14 @@ func (s *Server) convert(ctx context.Context, body api.ConvertRequest) (api.Conv
 		return api.ConvertResponse{}, invalidField("reading", "must be a non-empty UTF-8 string")
 	}
 
+	limit := defaultCandidateLimit
+	if body.MaxCandidates != nil {
+		limit = *body.MaxCandidates
+		if limit < 1 || limit > maxCandidateLimit {
+			return api.ConvertResponse{}, invalidField("max_candidates", fmt.Sprintf("must be between 1 and %d", maxCandidateLimit))
+		}
+	}
+
 	boundaries, confirmations, err := parseSegments(body.Segments)
 	if err != nil {
 		return api.ConvertResponse{}, err
@@ -122,7 +136,7 @@ func (s *Server) convert(ctx context.Context, body api.ConvertRequest) (api.Conv
 		return api.ConvertResponse{}, err
 	}
 
-	return buildResponse(converted, confirmations)
+	return buildResponse(converted, confirmations, limit)
 }
 
 // parseSegments validates the requested segments. It returns their readings and,
@@ -227,9 +241,9 @@ func allConfirmed(confirmations []*string) bool {
 	return true
 }
 
-// buildResponse keeps the confirmed candidates and uses Mozc's candidates for
-// the other segments.
-func buildResponse(converted []mozc.Segment, confirmations []*string) (api.ConvertResponse, error) {
+// buildResponse keeps the confirmed candidates and uses up to limit of Mozc's
+// candidates for the other segments.
+func buildResponse(converted []mozc.Segment, confirmations []*string, limit int) (api.ConvertResponse, error) {
 	// The response reading is Mozc's, which may differ from the request
 	// (Mozc rewrites full-width ASCII to half-width, for example).
 	response := api.ConvertResponse{Segments: make([]api.SegmentResponse, len(converted))}
@@ -243,7 +257,7 @@ func buildResponse(converted []mozc.Segment, confirmations []*string) (api.Conve
 			})
 		} else {
 			err = response.Segments[i].FromUnconfirmedSegmentResponse(api.UnconfirmedSegmentResponse{
-				Reading: segment.Reading, Confirmed: false, Candidates: segment.Candidates,
+				Reading: segment.Reading, Confirmed: false, Candidates: segment.Candidates[:min(limit, len(segment.Candidates))],
 			})
 		}
 

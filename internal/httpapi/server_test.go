@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -187,6 +188,8 @@ func TestInvalidRequestDetails(t *testing.T) {
 		{`{"reading":"か","segments":[{"reading":"き"}]}`, "segments"},
 		{`{"reading":"か","segments":[{"reading":"か","confirmed":null}]}`, "segments[0].confirmed"},
 		{`{"reading":"かき","segments":[{"reading":"か"},{"reading":"き","confirmed":true,"candidates":[]}]}`, "segments[1].candidates"},
+		{`{"reading":"か","max_candidates":0}`, "max_candidates"},
+		{`{"reading":"か","max_candidates":1001}`, "max_candidates"},
 	} {
 		t.Run(test.body, func(t *testing.T) {
 			t.Parallel()
@@ -200,6 +203,47 @@ func TestInvalidRequestDetails(t *testing.T) {
 
 			if response.Code != http.StatusBadRequest || got.Details == nil || len(*got.Details) != 1 || (*got.Details)[0].Field != test.field {
 				t.Fatalf("want 400 with details for %s, got %d: %s", test.field, response.Code, response.Body)
+			}
+		})
+	}
+}
+
+func TestCandidateLimit(t *testing.T) {
+	t.Parallel()
+
+	candidates := make([]string, 25)
+	for i := range candidates {
+		candidates[i] = strconv.Itoa(i)
+	}
+
+	e := New(converterFunc(func(context.Context, string, []string) ([]mozc.Segment, error) {
+		return []mozc.Segment{{Reading: "か", Candidates: candidates}}, nil
+	}))
+
+	for _, test := range []struct {
+		body string
+		want int
+	}{
+		{`{"reading":"か"}`, 20},
+		{`{"reading":"か","max_candidates":3}`, 3},
+		{`{"reading":"か","max_candidates":1000}`, 25},
+	} {
+		t.Run(test.body, func(t *testing.T) {
+			t.Parallel()
+
+			response := request(t, e, http.MethodPost, "/convert", "application/json", test.body)
+
+			var got struct {
+				Segments []struct {
+					Candidates []string `json:"candidates"`
+				} `json:"segments"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+
+			if response.Code != http.StatusOK || len(got.Segments) != 1 || !reflect.DeepEqual(got.Segments[0].Candidates, candidates[:test.want]) {
+				t.Fatalf("want the first %d candidates, got %d: %s", test.want, response.Code, response.Body)
 			}
 		})
 	}

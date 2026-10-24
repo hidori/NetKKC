@@ -76,6 +76,10 @@ type ConfirmedSegmentConfirmed bool
 
 // ConvertRequest defines model for ConvertRequest.
 type ConvertRequest struct {
+	// MaxCandidates 未確定文節ごとに返す候補の最大数。Mozc の候補順で先頭から返す。
+	// 範囲外は入力エラー（400）。
+	MaxCandidates *int `json:"max_candidates,omitempty"`
+
 	// Reading 読み文字列。サーバーは加工しない。
 	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
 	// 文節操作は応答の読みを基準にする。

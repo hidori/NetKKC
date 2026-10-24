@@ -150,7 +150,7 @@ func TestConvert(t *testing.T) {
 func TestInvalidRequestsDoNotCallMozc(t *testing.T) {
 	t.Parallel()
 
-	longReading := strings.Repeat("a", 4097)
+	longReading := strings.Repeat("a", 1024)
 
 	for _, test := range []struct{ path, body string }{
 		{"/convert", ``}, {"/convert", `null`}, {"/convert", `{}`}, {"/convert", `{"reading":""}`},
@@ -169,7 +169,7 @@ func TestInvalidRequestsDoNotCallMozc(t *testing.T) {
 		{"/reconvert", `{"segments":[{"reading":"か","confirmed":true,"candidates":[""]}]}`},
 		{"/reconvert", `{"segments":[{"reading":"か","candidates":null}]}`},
 		{"/reconvert", `{"segments":[{"reading":"か","candidates":[1]}]}`},
-		{"/reconvert", `{"segments":[{"reading":"` + longReading[:4000] + `"},{"reading":"` + longReading[:97] + `"}]}`},
+		{"/reconvert", `{"segments":[{"reading":"` + longReading[:1000] + `"},{"reading":"` + longReading[:24] + `"}]}`},
 	} {
 		t.Run(test.path+" "+test.body, func(t *testing.T) {
 			t.Parallel()
@@ -191,7 +191,7 @@ func TestInvalidRequestDetails(t *testing.T) {
 		field string
 	}{
 		{"/convert", `{"reading":""}`, "reading"},
-		{"/convert", `{"reading":"` + strings.Repeat("a", 4097) + `"}`, "reading"},
+		{"/convert", `{"reading":"` + strings.Repeat("a", 1024) + `"}`, "reading"},
 		{"/convert", `{"reading":"か","max_candidates":0}`, "max_candidates"},
 		{"/convert", `{"reading":"か","max_candidates":1001}`, "max_candidates"},
 		{"/reconvert", `{}`, "segments"},

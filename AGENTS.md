@@ -41,10 +41,9 @@ VS Code Dev Container で開く。`compose.yaml` が次の 3 サービスを起�
 ```sh
 make generate          # Go モデルと Echo サーバーインターフェースを生成する。
 make build             # bin/kkc-server をビルドする。
-make lint              # golangci-lint（v2.14.0、既定設定）で検査する。
+make lint              # golangci-lint（v2.14.0、設定は .golangci.yml）で検査する。
 make lint-fix          # golangci-lint で自動修正できる指摘を修正する。
 make test              # 全テスト（dev では実 Mozc のテストも含む）。
-make test-integration  # テストキャッシュを使わずに全テストを実行する。
 ```
 
 - 実 Mozc のテストは環境変数 `NETKKC_TEST_MOZC_PROFILE` が設定されているときだけ動く

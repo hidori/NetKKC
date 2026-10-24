@@ -59,7 +59,7 @@ make test              # 全テスト（dev では実 Mozc のテストも含む
 | `main.go` | 起動処理とフラグ（`-listen`、`-mozc-profile`。既定は環境変数 `MOZC_PROFILE_DIR`）。 |
 | `internal/api/` | oapi-codegen の生成コード。 |
 | `internal/httpapi/` | HTTP ハンドラー、要求の検証、エラーの対応付け。 |
-| `internal/mozc/` | Mozc IPC クライアント（Unix ソケット＋protobuf）と変換処理。制限事項は `internal/mozc/README.md`。 |
+| `internal/mozc/` | Mozc IPC クライアント（Unix ソケット＋protobuf）と変換処理。制限事項は `doc/mozc.md`。 |
 | `compose.yaml`, `.devcontainer/` | 開発環境。 |
 | `.devcontainer/Dockerfile.mozc` | Mozc イメージ。 |
 

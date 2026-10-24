@@ -1,6 +1,6 @@
-# internal/mozc
+# Mozc バックエンド
 
-Mozc（`mozc_server`）を変換バックエンドとして使うためのクライアントと変換処理。
+Mozc（`mozc_server`）を変換バックエンドとして使うクライアントと変換処理（`internal/mozc`）。
 Unix ソケットと protobuf で専用の Mozc に接続し、キー操作で変換と文節境界の再現を行う。
 
 ## 制限事項

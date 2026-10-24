@@ -41,7 +41,7 @@ func TestDecodeOutput(t *testing.T) {
 			want: commandOutput{
 				id:         42,
 				segments:   []preeditSegment{{reading: "きょうは", text: "今日は", focused: true}},
-				candidates: []candidate{{id: -1, text: "今日は"}},
+				candidates: []candidate{{text: "今日は"}},
 			},
 		},
 		{name: "truncated tag", data: []byte{0xff}, wantErr: true},

@@ -71,7 +71,6 @@ const (
 // CandidateList and CandidateWord fields.
 const (
 	candidateListCandidates protowire.Number = 2
-	candidateWordID         protowire.Number = 1
 	candidateWordValue      protowire.Number = 4
 )
 

@@ -71,7 +71,6 @@ type preeditSegment struct {
 }
 
 type candidate struct {
-	id   int32
 	text string
 }
 
@@ -202,8 +201,6 @@ func decodeCandidateWord(data []byte) (candidate, error) {
 
 	for _, field := range fields {
 		switch field.number {
-		case candidateWordID:
-			cand.id = int32(field.value)
 		case candidateWordValue:
 			cand.text = string(field.data)
 		default: // Unknown fields are skipped.

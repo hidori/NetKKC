@@ -26,6 +26,39 @@ type Client struct {
 	Timeout time.Duration
 }
 
+// Configure applies stateless conversion settings only to the dedicated profile.
+// Do not point this client at a user's desktop IME profile.
+func (c *Client) Configure(ctx context.Context) error {
+	// Incognito + NO_HISTORY disable use/update of personal history. MSIME fixes
+	// the key bindings used for focus and resize commands across installations.
+	config := number(nil, configIncognitoMode, 1)
+	config = number(config, configSessionKeymap, sessionKeymapMSIME)
+	config = number(config, configHistoryLearningLevel, historyNoHistory)
+	input := number(nil, inputType, commandSetConfig)
+
+	out, err := c.call(ctx, message(input, inputConfig, config))
+	if err != nil {
+		return err
+	}
+
+	fields, err := decode(out.config)
+	if err != nil {
+		return err
+	}
+
+	settings := make(map[protowire.Number]uint64)
+	for _, f := range fields {
+		settings[f.number] = f.value
+	}
+
+	if settings[configIncognitoMode] != 1 || settings[configSessionKeymap] != sessionKeymapMSIME ||
+		settings[configHistoryLearningLevel] != historyNoHistory {
+		return errs.Errorf("%w: incognito, NO_HISTORY and MSIME key bindings were not applied", ErrUnavailable)
+	}
+
+	return nil
+}
+
 func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) {
 	path, err := os.ReadFile(filepath.Join(c.Profile, ".session.ipc"))
 	if err != nil {
@@ -100,39 +133,6 @@ func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) 
 	}
 
 	return out, err
-}
-
-// Configure applies stateless conversion settings only to the dedicated profile.
-// Do not point this client at a user's desktop IME profile.
-func (c *Client) Configure(ctx context.Context) error {
-	// Incognito + NO_HISTORY disable use/update of personal history. MSIME fixes
-	// the key bindings used for focus and resize commands across installations.
-	config := number(nil, configIncognitoMode, 1)
-	config = number(config, configSessionKeymap, sessionKeymapMSIME)
-	config = number(config, configHistoryLearningLevel, historyNoHistory)
-	input := number(nil, inputType, commandSetConfig)
-
-	out, err := c.call(ctx, message(input, inputConfig, config))
-	if err != nil {
-		return err
-	}
-
-	fields, err := decode(out.config)
-	if err != nil {
-		return err
-	}
-
-	settings := make(map[protowire.Number]uint64)
-	for _, f := range fields {
-		settings[f.number] = f.value
-	}
-
-	if settings[configIncognitoMode] != 1 || settings[configSessionKeymap] != sessionKeymapMSIME ||
-		settings[configHistoryLearningLevel] != historyNoHistory {
-		return errs.Errorf("%w: incognito, NO_HISTORY and MSIME key bindings were not applied", ErrUnavailable)
-	}
-
-	return nil
 }
 
 type session struct {

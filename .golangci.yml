@@ -16,7 +16,7 @@ linters:
     - wsl
   settings:
     cyclop:
-      max-complexity: 25
+      max-complexity: 20
     exhaustive:
       default-signifies-exhaustive: true
     lll:

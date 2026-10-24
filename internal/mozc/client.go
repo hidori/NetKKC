@@ -64,6 +64,11 @@ func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) 
 
 	defer func() { _ = conn.Close() }()
 
+	unixConn, ok := conn.(*net.UnixConn)
+	if !ok {
+		return commandOutput{}, errs.Errorf("%w: unexpected connection type %T", ErrUnavailable, conn)
+	}
+
 	deadline, _ := ctx.Deadline()
 	if err := conn.SetDeadline(deadline); err != nil {
 		return commandOutput{}, errs.Errorf("%w: set deadline: %w", ErrUnavailable, err)
@@ -76,7 +81,7 @@ func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) 
 		return commandOutput{}, errs.Errorf("%w: send request: %w", ErrUnavailable, err)
 	}
 
-	if err := conn.(*net.UnixConn).CloseWrite(); err != nil {
+	if err := unixConn.CloseWrite(); err != nil {
 		return commandOutput{}, errs.Errorf("%w: close request: %w", ErrUnavailable, err)
 	}
 

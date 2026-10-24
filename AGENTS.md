@@ -59,7 +59,7 @@ make test              # 全テスト（dev では実 Mozc のテストも含む
 | `main.go` | 起動処理とフラグ（`-listen`、`-mozc-profile`。既定は環境変数 `MOZC_PROFILE_DIR`）。 |
 | `internal/api/` | oapi-codegen の生成コード。 |
 | `internal/httpapi/` | HTTP ハンドラー、要求の検証、エラーの対応付け。 |
-| `internal/mozc/` | Mozc IPC クライアント（Unix ソケット＋protobuf）と変換処理。 |
+| `internal/mozc/` | Mozc IPC クライアント（Unix ソケット＋protobuf）と変換処理。制限事項は `internal/mozc/README.md`。 |
 | `compose.yaml`, `.devcontainer/` | 開発環境。 |
 | `.devcontainer/Dockerfile.mozc` | Mozc イメージ。 |
 
@@ -85,19 +85,6 @@ make test              # 全テスト（dev では実 Mozc のテストも含む
   `requestError`（詳細付き）で返す。各層は `internal/errs` でスタックトレースを付けて
   伝えるだけで、HTTP の応答への変換はミドルウェア `errorResponses` の 1 か所で行う
   （5xx はスタックトレース付きでログ出力）。
-
-## Mozc 由来の制限事項
-
-Mozc は POC 用の変換バックエンドで、将来は置き換える前提。次の制限は Mozc に由来する。
-
-- 読みは UTF-8 で 1023 バイトまで（Mozc 2.29.5160.102 の `kMaxCharLength` = 1024 未満）。
-  これを超えると Mozc が変換しないため、API でも上限にしている。
-- 全角英数字は Mozc が半角に書き換えるため、応答の文節の読みが要求と異なる。
-- 文節境界は SHIFT+←/→ で 1 文字ずつ再現するため、Mozc の自動分割から大きく離れた境界は遅い。
-  1 文字ずつ区切ると文節数に対して 2 乗以上に伸び（実測: 60 文節で約 5 秒、80 文節で約 13 秒）、
-  100 文節程度で 15 秒の期限を超える（504）。Mozc の区切りに近い通常の再変換は速い
-  （実測: 50 文節で 0.1 秒未満）。
-- 変換は 1 つの Mozc に対して 1 件ずつ直列に処理するため、遅い要求の間はほかの要求が待たされる。
 
 ## 今後の作業候補
 

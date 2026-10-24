@@ -3,6 +3,7 @@ package mozc
 import (
 	"context"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
-func TestDecodeOutput(t *testing.T) {
+func encodedOutput() []byte {
 	segment := number(nil, 3, 2)
 	segment = message(segment, 4, []byte("今日は"))
 	segment = message(segment, 6, []byte("きょうは"))
@@ -21,37 +22,56 @@ func TestDecodeOutput(t *testing.T) {
 	word = message(word, 4, []byte("今日は"))
 	data := message(number(nil, 1, 42), 5, preedit)
 	data = message(data, 14, message(nil, 2, word))
-	data = message(data, 100, []byte("unknown field"))
 
-	out, err := decodeOutput(data)
-	if err != nil {
-		t.Fatal(err)
-	}
+	return message(data, 100, []byte("unknown field"))
+}
 
-	if out.id != 42 || len(out.segments) != 1 || out.segments[0].reading != "きょうは" || focused(out) != 0 {
-		t.Fatalf("incorrect session or segment: %+v", out)
-	}
+func TestDecodeOutput(t *testing.T) {
+	t.Parallel()
 
-	if len(out.candidates) != 1 || out.candidates[0].id != -1 || out.candidates[0].text != "今日は" {
-		t.Fatalf("incorrect candidate: %+v", out.candidates)
+	for _, test := range []struct {
+		name    string
+		data    []byte
+		want    commandOutput
+		wantErr bool
+	}{
+		{
+			name: "valid",
+			data: encodedOutput(),
+			want: commandOutput{
+				id:         42,
+				segments:   []preeditSegment{{reading: "きょうは", text: "今日は", focused: true}},
+				candidates: []candidate{{id: -1, text: "今日は"}},
+			},
+		},
+		{name: "truncated tag", data: []byte{0xff}, wantErr: true},
+		{name: "truncated preedit", data: []byte{0x2a, 0x05, 0x01}, wantErr: true},
+		{name: "malformed preedit", data: []byte{0x2a, 0x01, 0x13}, wantErr: true},
+		{name: "session error", data: number(nil, 11, 1), wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := decodeOutput(test.data)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("want error %v, got %v", test.wantErr, err)
+			}
+
+			if !test.wantErr && !reflect.DeepEqual(out, test.want) {
+				t.Fatalf("incorrect output: %+v", out)
+			}
+		})
 	}
 }
 
-func TestDecodeMalformedOutput(t *testing.T) {
-	for _, data := range [][]byte{{0xff}, {0x2a, 0x05, 0x01}, {0x2a, 0x01, 0x13}, number(nil, 11, 1)} {
-		if _, err := decodeOutput(data); err == nil {
-			t.Errorf("expected malformed output to fail: %x", data)
-		}
-	}
-}
-
+//nolint:paralleltest // Uses the shared real Mozc server.
 func TestMozcIntegration(t *testing.T) {
 	profile := os.Getenv("NETKKC_TEST_MOZC_PROFILE")
 	if profile == "" {
 		t.Skip("set NETKKC_TEST_MOZC_PROFILE to a dedicated running Mozc profile")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
 	client := &Client{Profile: profile}
@@ -78,7 +98,7 @@ func TestMozcIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var readings []string
+			readings := make([]string, 0, len(segments))
 			for _, segment := range segments {
 				readings = append(readings, segment.Reading)
 				if len(segment.Candidates) == 0 {

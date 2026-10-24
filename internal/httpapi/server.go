@@ -24,8 +24,7 @@ const (
 	// Limits of candidates returned for each unconfirmed segment.
 	defaultCandidateLimit = 20
 	maxCandidateLimit     = 1000
-	// Limit of the whole reading in UTF-8 bytes. Mozc rejects conversion keys
-	// of kMaxCharLength (1024) bytes or more.
+	// Limit of the whole reading in UTF-8 bytes (see doc/mozc.md).
 	maxReadingBytes = 1023
 )
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hidori/NetKKC/internal/api"
 	"github.com/hidori/NetKKC/internal/mozc"
 	"github.com/labstack/echo/v4"
 )
@@ -174,6 +176,35 @@ func TestInvalidRequestsDoNotCallMozc(t *testing.T) {
 	}
 }
 
+func TestInvalidRequestDetails(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		body  string
+		field string
+	}{
+		{`{"reading":""}`, "reading"},
+		{`{"reading":"か","segments":[{"reading":"き"}]}`, "segments"},
+		{`{"reading":"か","segments":[{"reading":"か","confirmed":null}]}`, "segments[0].confirmed"},
+		{`{"reading":"かき","segments":[{"reading":"か"},{"reading":"き","confirmed":true,"candidates":[]}]}`, "segments[1].candidates"},
+	} {
+		t.Run(test.body, func(t *testing.T) {
+			t.Parallel()
+
+			response := request(t, New(mustNotCallMozc(t)), http.MethodPost, "/convert", "application/json", test.body)
+
+			var got api.ErrorResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+
+			if response.Code != http.StatusBadRequest || got.Details == nil || len(*got.Details) != 1 || (*got.Details)[0].Field != test.field {
+				t.Fatalf("want 400 with details for %s, got %d: %s", test.field, response.Code, response.Body)
+			}
+		})
+	}
+}
+
 func TestBackendErrors(t *testing.T) {
 	t.Parallel()
 
@@ -183,7 +214,10 @@ func TestBackendErrors(t *testing.T) {
 		status int
 	}{
 		{"boundaries", mozc.ErrBoundaries, http.StatusUnprocessableEntity},
-		{"unavailable", errors.New("connection refused"), http.StatusServiceUnavailable},
+		{"invalid response", fmt.Errorf("%w: no segments", mozc.ErrInvalidResponse), http.StatusBadGateway},
+		{"unavailable", fmt.Errorf("%w: connect", mozc.ErrUnavailable), http.StatusServiceUnavailable},
+		{"timeout", context.DeadlineExceeded, http.StatusGatewayTimeout},
+		{"unexpected", errors.New("unexpected"), http.StatusInternalServerError},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

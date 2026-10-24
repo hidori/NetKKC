@@ -123,11 +123,12 @@ paths:
                         candidates: [行く, 逝く]
         default:
           description: |
-            400: JSON・フィールド型・読み・確定候補・文節境界の不整合。
+            400: JSON・フィールド型・読み・確定候補・文節境界の不整合。details に項目ごとの理由を含む場合がある。
             413: 要求本文が 1 MiB を超える。
             415: Content-Type が application/json ではない。
             422: 指定境界を実現できない（Mozc が読みを書き換えた場合を含む）。
-            502: Mozc が候補を返さない。
+            500: 想定外のエラー。
+            502: Mozc の応答が不正（候補がないなど）。
             503: Mozc に接続できない、または変換に失敗した。
             504: 変換処理の期限超過・キャンセル。
           content:
@@ -141,6 +142,19 @@ components:
       required: [message]
       properties:
         message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+    ErrorDetail:
+      type: object
+      required: [field, reason]
+      properties:
+        field:
+          type: string
+          description: 不正な項目の位置（例 segments[1].candidates）。
+        reason:
           type: string
     Reading:
       type: string

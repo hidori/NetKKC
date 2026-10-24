@@ -18,7 +18,7 @@ NetKKC は、組み込み・エッジデバイス向けに、Mozc によるか�
 - API 定義は `openapi.yaml` に OpenAPI 3.1 形式で記述する。
 - API モデルとサーバーひな型は、この定義から `oapi-codegen` で生成する。
 - `make generate` で oapi-codegen v2.8.0 と `oapi-codegen.yaml` を使用し、
-  `internal/api/openapi.gen.go` にモデル・Echo サーバーインターフェース・strict server を生成する。
+  `internal/api/openapi.gen.go` にモデルと Echo サーバーインターフェース（ルーティングを含む）を生成する。
 - 既存の Echo 構成に合わせたサーバーインターフェースを生成し、変換処理は別に実装する。
 - 生成コードの手編集ではなく、定義の修正と再生成で API の変更を反映する。
 - 初回変換と再変換は `POST /convert` で処理する。
@@ -157,7 +157,17 @@ Mozc が返した読みと、各文節の読み・変換候補を返す。
 
 ## エラーと処理制限
 
-エラー本文は `{"message":"説明"}` の JSON とする。
+エラー本文は `ErrorResponse` の JSON とする。
+`details` は任意で、入力エラー（400）のときに、不正な項目の位置（`field`）と理由（`reason`）を返す。
+
+```json
+{
+  "message": "invalid request",
+  "details": [
+    {"field": "segments[1].candidates", "reason": "confirmed segments require exactly one non-empty candidate"}
+  ]
+}
+```
 
 | HTTP ステータス | 意味 |
 | --- | --- |
@@ -165,7 +175,8 @@ Mozc が返した読みと、各文節の読み・変換候補を返す。
 | 413 | 要求本文が 1 MiB を超える。 |
 | 415 | Content-Type が `application/json` ではない。 |
 | 422 | Mozc が指定境界を実現できない（Mozc が読みを書き換えた場合を含む）。 |
-| 502 | Mozc が候補を返さない。 |
+| 500 | 想定外のエラー。 |
+| 502 | Mozc の応答が不正（候補がないなど）。 |
 | 503 | Mozc に接続できない、または変換に失敗した。 |
 | 504 | 変換処理の15秒の期限超過・キャンセル。 |
 

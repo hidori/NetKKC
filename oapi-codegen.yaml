@@ -2,5 +2,4 @@ package: api
 generate:
   models: true
   echo-server: true
-  strict-server: true
 output: internal/api/openapi.gen.go

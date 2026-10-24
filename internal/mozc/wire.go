@@ -105,7 +105,7 @@ func decodeOutput(data []byte) (commandOutput, error) {
 			result.config = field.data
 		case outputErrorCode:
 			if field.value != errorCodeSessionSuccess {
-				return commandOutput{}, fmt.Errorf("mozc session failure (%d)", field.value)
+				return commandOutput{}, errs.Errorf("%w: session failure (%d)", ErrUnavailable, field.value)
 			}
 		case outputAllCandidateWords:
 			candidates, err := decodeCandidateList(field.data)

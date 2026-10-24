@@ -9,7 +9,14 @@ import (
 	"github.com/hidori/NetKKC/internal/errs"
 )
 
-var ErrBoundaries = errors.New("mozc cannot realize the requested segment boundaries")
+var (
+	// ErrBoundaries means Mozc cannot realize the requested segment boundaries.
+	ErrBoundaries = errors.New("mozc cannot realize the requested segment boundaries")
+	// ErrUnavailable means Mozc cannot be reached or failed to process a request.
+	ErrUnavailable = errors.New("mozc is unavailable")
+	// ErrInvalidResponse means Mozc returned a response that cannot be used.
+	ErrInvalidResponse = errors.New("mozc returned an invalid response")
+)
 
 type Segment struct {
 	Reading    string
@@ -27,7 +34,18 @@ func NewConverter(client *Client) *Converter {
 	return &Converter{client: client, gate: make(chan struct{}, 1)}
 }
 
+// Convert returns the segments of reading. When ctx is done before the
+// conversion completes, it returns the context error.
 func (c *Converter) Convert(ctx context.Context, reading string, boundaries []string) ([]Segment, error) {
+	segments, err := c.convert(ctx, reading, boundaries)
+	if err != nil && ctx.Err() != nil {
+		return nil, errs.Wrap(ctx.Err())
+	}
+
+	return segments, err
+}
+
+func (c *Converter) convert(ctx context.Context, reading string, boundaries []string) ([]Segment, error) {
 	release, err := c.acquire(ctx)
 	if err != nil {
 		return nil, err
@@ -48,7 +66,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 	// reading becomes the reference for the rest of the conversion.
 	reading = joined(out)
 	if reading == "" {
-		return nil, errors.New("mozc returned no segments")
+		return nil, errs.Errorf("%w: no segments", ErrInvalidResponse)
 	}
 
 	if len(boundaries) > 0 {
@@ -104,7 +122,7 @@ func (s *session) collectSegments(ctx context.Context, out commandOutput, readin
 	result := make([]Segment, 0, len(out.segments))
 	for i := range len(out.segments) {
 		if focused(out) != i {
-			return nil, errors.New("unexpected Mozc segment focus")
+			return nil, errs.Errorf("%w: unexpected segment focus", ErrInvalidResponse)
 		}
 
 		segment, err := focusedSegment(out, i)
@@ -143,7 +161,7 @@ func focusedSegment(out commandOutput, index int) (Segment, error) {
 	}
 
 	if len(segment.Candidates) == 0 {
-		return Segment{}, errors.New("mozc returned no candidates for a segment")
+		return Segment{}, errs.Errorf("%w: no candidates for a segment", ErrInvalidResponse)
 	}
 
 	return segment, nil
@@ -235,7 +253,7 @@ func joined(out commandOutput) string {
 
 func checkReading(out commandOutput, reading string) error {
 	if joined(out) != reading {
-		return errors.New("mozc changed the reading during conversion")
+		return errs.Errorf("%w: reading changed during conversion", ErrInvalidResponse)
 	}
 
 	return nil

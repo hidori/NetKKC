@@ -4,11 +4,7 @@
 package api
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
 
 	"github.com/labstack/echo/v4"
 	"github.com/oapi-codegen/runtime"
@@ -102,9 +98,17 @@ type ConvertResponse struct {
 	Segments []SegmentResponse `json:"segments"`
 }
 
+// ErrorDetail defines model for ErrorDetail.
+type ErrorDetail struct {
+	// Field 不正な項目の位置（例 segments[1].candidates）。
+	Field  string `json:"field"`
+	Reason string `json:"reason"`
+}
+
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
-	Message string `json:"message"`
+	Details *[]ErrorDetail `json:"details,omitempty"`
+	Message string         `json:"message"`
 }
 
 // Reading 読み文字列。サーバーは加工しない。
@@ -366,145 +370,4 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/healsh", wrapper.GetHealth, options.OperationMiddlewares["getHealth"]...)
 	router.POST(options.BaseURL+"/convert", wrapper.Convert, options.OperationMiddlewares["convert"]...)
 
-}
-
-type ConvertRequestObject struct {
-	Body *ConvertJSONRequestBody
-}
-
-type ConvertResponseObject interface {
-	VisitConvertResponse(w http.ResponseWriter) error
-}
-
-type Convert200JSONResponse ConvertResponse
-
-func (response Convert200JSONResponse) VisitConvertResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ConvertdefaultJSONResponse struct {
-	Body       ErrorResponse
-	StatusCode int
-}
-
-func (response ConvertdefaultJSONResponse) VisitConvertResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetHealthRequestObject struct {
-}
-
-type GetHealthResponseObject interface {
-	VisitGetHealthResponse(w http.ResponseWriter) error
-}
-
-type GetHealth200TextResponse string
-
-func (response GetHealth200TextResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
-
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(200)
-
-	_, err := w.Write([]byte(fmt.Sprint(response)))
-	return err
-}
-
-// StrictServerInterface represents all server handlers.
-type StrictServerInterface interface {
-	// Convert 読みを文節ごとのかな漢字候補に変換する
-	// (POST /convert)
-	Convert(ctx context.Context, request ConvertRequestObject) (ConvertResponseObject, error)
-	// GetHealth ヘルスチェック
-	// (GET /healsh)
-	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
-}
-
-type StrictHandlerFunc func(ctx echo.Context, request any) (any, error)
-type StrictMiddlewareFunc func(f StrictHandlerFunc, operationID string) StrictHandlerFunc
-
-func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareFunc) ServerInterface {
-	return &strictHandler{ssi: ssi, middlewares: middlewares}
-}
-
-type strictHandler struct {
-	ssi         StrictServerInterface
-	middlewares []StrictMiddlewareFunc
-}
-
-// Convert operation middleware
-func (sh *strictHandler) Convert(ctx echo.Context) error {
-	var request ConvertRequestObject
-
-	var body ConvertJSONRequestBody
-	var err error
-	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
-		// Bind only the request body, so that path and query parameters
-		// are not also bound into the body struct.
-		err = binder.BindBody(ctx, &body)
-	} else {
-		// A custom binder is installed on the Echo instance; defer to it
-		// entirely, since echo.Binder does not expose body-only binding.
-		err = ctx.Bind(&body)
-	}
-	if err != nil {
-		return err
-	}
-	request.Body = &body
-
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.Convert(ctx.Request().Context(), request.(ConvertRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "Convert")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(ConvertResponseObject); ok {
-		return validResponse.VisitConvertResponse(ctx.Response())
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// GetHealth operation middleware
-func (sh *strictHandler) GetHealth(ctx echo.Context) error {
-	var request GetHealthRequestObject
-
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetHealth(ctx.Request().Context(), request.(GetHealthRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetHealth")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
-		return validResponse.VisitGetHealthResponse(ctx.Response())
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
 }

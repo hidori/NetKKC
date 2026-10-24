@@ -74,6 +74,13 @@ make test              # 全テスト（dev では実 Mozc のテストも含む
   結果の文節の読みが指定どおりかを検証する。再現できなければ 422。
 - すべての文節が確定済みなら、Mozc を呼ばずに確定候補を返す。
 - サーバーは Mozc の設定が完了するまで最大 10 秒待ってから listen する。
+- ハンドラーは Echo 標準の形（oapi-codegen の strict server は使わない）。成功時は 200 に
+  対応する型を書き出し、失敗は `error` で返す。
+- エラーの伝達: ドメイン（`internal/mozc`）はエラーと判断した時点で `ErrBoundaries`・
+  `ErrUnavailable`・`ErrInvalidResponse` を返し、入力エラーは `internal/httpapi` の
+  `requestError`（詳細付き）で返す。各層は `internal/errs` でスタックトレースを付けて
+  伝えるだけで、HTTP の応答への変換はミドルウェア `errorResponses` の 1 か所で行う
+  （5xx はスタックトレース付きでログ出力）。
 
 ## 今後の作業候補
 

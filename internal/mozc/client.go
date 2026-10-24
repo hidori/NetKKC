@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -30,12 +29,12 @@ type Client struct {
 func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) {
 	path, err := os.ReadFile(filepath.Join(c.Profile, ".session.ipc"))
 	if err != nil {
-		return commandOutput{}, fmt.Errorf("read Mozc IPC discovery: %w", err)
+		return commandOutput{}, errs.Errorf("%w: read IPC discovery: %w", ErrUnavailable, err)
 	}
 
 	fields, err := decode(path)
 	if err != nil {
-		return commandOutput{}, fmt.Errorf("decode Mozc IPC discovery: %w", err)
+		return commandOutput{}, errs.Errorf("%w: decode IPC discovery: %w", ErrUnavailable, err)
 	}
 
 	var key string
@@ -47,7 +46,7 @@ func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) 
 	}
 
 	if !ipcKey.MatchString(key) {
-		return commandOutput{}, errors.New("invalid Mozc IPC discovery key")
+		return commandOutput{}, errs.Errorf("%w: invalid IPC discovery key", ErrUnavailable)
 	}
 
 	timeout := c.Timeout
@@ -60,37 +59,42 @@ func (c *Client) call(ctx context.Context, input []byte) (commandOutput, error) 
 
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", "@tmp/.mozc."+key+".session")
 	if err != nil {
-		return commandOutput{}, fmt.Errorf("connect to Mozc: %w", err)
+		return commandOutput{}, errs.Errorf("%w: connect: %w", ErrUnavailable, err)
 	}
 
 	defer func() { _ = conn.Close() }()
 
 	deadline, _ := ctx.Deadline()
 	if err := conn.SetDeadline(deadline); err != nil {
-		return commandOutput{}, errs.Wrap(err)
+		return commandOutput{}, errs.Errorf("%w: set deadline: %w", ErrUnavailable, err)
 	}
 
 	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
 	defer stop()
 
 	if _, err := io.Copy(conn, bytes.NewReader(input)); err != nil {
-		return commandOutput{}, fmt.Errorf("send Mozc request: %w", err)
+		return commandOutput{}, errs.Errorf("%w: send request: %w", ErrUnavailable, err)
 	}
 
 	if err := conn.(*net.UnixConn).CloseWrite(); err != nil {
-		return commandOutput{}, errs.Wrap(err)
+		return commandOutput{}, errs.Errorf("%w: close request: %w", ErrUnavailable, err)
 	}
 
 	data, err := io.ReadAll(io.LimitReader(conn, maxResponseBytes+1))
 	if err != nil {
-		return commandOutput{}, fmt.Errorf("receive Mozc response: %w", err)
+		return commandOutput{}, errs.Errorf("%w: receive response: %w", ErrUnavailable, err)
 	}
 
 	if len(data) == 0 || len(data) > maxResponseBytes {
-		return commandOutput{}, errors.New("invalid Mozc response size")
+		return commandOutput{}, errs.Errorf("%w: response size %d", ErrInvalidResponse, len(data))
 	}
 
-	return decodeOutput(data)
+	out, err := decodeOutput(data)
+	if err != nil && !errors.Is(err, ErrUnavailable) {
+		return commandOutput{}, errs.Errorf("%w: %w", ErrInvalidResponse, err)
+	}
+
+	return out, err
 }
 
 // Configure applies stateless conversion settings only to the dedicated profile.
@@ -120,7 +124,7 @@ func (c *Client) Configure(ctx context.Context) error {
 
 	if settings[configIncognitoMode] != 1 || settings[configSessionKeymap] != sessionKeymapMSIME ||
 		settings[configHistoryLearningLevel] != historyNoHistory {
-		return errors.New("mozc did not enable incognito, NO_HISTORY and MSIME key bindings")
+		return errs.Errorf("%w: incognito, NO_HISTORY and MSIME key bindings were not applied", ErrUnavailable)
 	}
 
 	return nil
@@ -138,7 +142,7 @@ func (c *Client) create(ctx context.Context) (*session, error) {
 	}
 
 	if out.id == 0 {
-		return nil, errors.New("mozc returned an empty session ID")
+		return nil, errs.Errorf("%w: empty session ID", ErrInvalidResponse)
 	}
 
 	return &session{client: c, id: out.id}, nil

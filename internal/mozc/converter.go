@@ -38,7 +38,7 @@ func (c *Converter) Convert(ctx context.Context, reading string, boundaries []st
 	if err != nil {
 		return nil, err
 	}
-	defer sess.close()
+	defer sess.close(ctx)
 
 	out, err := sess.begin(ctx, reading)
 	if err != nil {

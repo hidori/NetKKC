@@ -144,8 +144,9 @@ func (c *Client) create(ctx context.Context) (*session, error) {
 	return &session{client: c, id: out.id}, nil
 }
 
-func (s *session) close() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+// close deletes the session even after ctx is canceled.
+func (s *session) close(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer cancel()
 
 	_, _ = s.client.call(ctx, number(number(nil, inputType, commandDeleteSession), inputID, s.id))

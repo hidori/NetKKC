@@ -55,7 +55,7 @@ func (e UnconfirmedSegmentResponseConfirmed) Valid() bool {
 	}
 }
 
-// Candidates 変換候補の文字列配列。候補数の上限は未確定。
+// Candidates 変換候補の文字列配列。
 type Candidates = []string
 
 // ConfirmedSegment 確定済み文節。再要求と応答に共通の形式。
@@ -67,7 +67,7 @@ type ConfirmedSegment struct {
 
 	// Reading 読み文字列。サーバーは加工しない。
 	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
-	// 文節操作は応答の読みを基準にする。
+	// 再変換は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
 }
 
@@ -78,27 +78,17 @@ type ConfirmedSegmentConfirmed bool
 type ConvertRequest struct {
 	// MaxCandidates 未確定文節ごとに返す候補の最大数。Mozc の候補順で先頭から返す。
 	// 範囲外は入力エラー（400）。
-	MaxCandidates *int `json:"max_candidates,omitempty"`
+	MaxCandidates *MaxCandidates `json:"max_candidates,omitempty"`
 
 	// Reading 読み文字列。サーバーは加工しない。
 	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
-	// 文節操作は応答の読みを基準にする。
+	// 再変換は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
-
-	// Segments 省略または空配列なら自動分割。
-	// 指定時は各文節の reading の連結が全体の reading と一致すること。
-	// 要求間の状態や候補全体を再送する必要はない。
-	Segments *[]SegmentRequest `json:"segments,omitempty"`
 }
 
 // ConvertResponse defines model for ConvertResponse.
 type ConvertResponse struct {
-	// Reading 読み文字列。サーバーは加工しない。
-	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
-	// 文節操作は応答の読みを基準にする。
-	Reading Reading `json:"reading"`
-
-	// Segments 読み順の文節。各 reading の連結は全体の reading と一致する。
+	// Segments 読み順の文節。各 reading の連結が全体の読み。
 	Segments []SegmentResponse `json:"segments"`
 }
 
@@ -115,10 +105,24 @@ type ErrorResponse struct {
 	Message string         `json:"message"`
 }
 
+// MaxCandidates 未確定文節ごとに返す候補の最大数。Mozc の候補順で先頭から返す。
+// 範囲外は入力エラー（400）。
+type MaxCandidates = int
+
 // Reading 読み文字列。サーバーは加工しない。
 // 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
-// 文節操作は応答の読みを基準にする。
+// 再変換は応答の読みを基準にする。
 type Reading = string
+
+// ReconvertRequest defines model for ReconvertRequest.
+type ReconvertRequest struct {
+	// MaxCandidates 未確定文節ごとに返す候補の最大数。Mozc の候補順で先頭から返す。
+	// 範囲外は入力エラー（400）。
+	MaxCandidates *MaxCandidates `json:"max_candidates,omitempty"`
+
+	// Segments 読み順の文節。要求間の状態や候補全体を再送する必要はない。
+	Segments []SegmentRequest `json:"segments"`
+}
 
 // SegmentRequest 未確定または確定済みの文節。
 // confirmed が省略された場合は、候補数にかかわらず未確定として扱う。
@@ -142,7 +146,7 @@ type UnconfirmedSegmentRequest struct {
 
 	// Reading 読み文字列。サーバーは加工しない。
 	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
-	// 文節操作は応答の読みを基準にする。
+	// 再変換は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
 }
 
@@ -151,21 +155,30 @@ type UnconfirmedSegmentRequestConfirmed bool
 
 // UnconfirmedSegmentResponse defines model for UnconfirmedSegmentResponse.
 type UnconfirmedSegmentResponse struct {
-	// Candidates 変換候補の文字列配列。候補数の上限は未確定。
+	// Candidates 変換候補の文字列配列。
 	Candidates Candidates                          `json:"candidates"`
 	Confirmed  UnconfirmedSegmentResponseConfirmed `json:"confirmed"`
 
 	// Reading 読み文字列。サーバーは加工しない。
 	// 応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
-	// 文節操作は応答の読みを基準にする。
+	// 再変換は応答の読みを基準にする。
 	Reading Reading `json:"reading"`
 }
 
 // UnconfirmedSegmentResponseConfirmed defines model for UnconfirmedSegmentResponse.Confirmed.
 type UnconfirmedSegmentResponseConfirmed bool
 
+// Converted defines model for Converted.
+type Converted = ConvertResponse
+
+// Error defines model for Error.
+type Error = ErrorResponse
+
 // ConvertJSONRequestBody defines body for Convert for application/json ContentType.
 type ConvertJSONRequestBody = ConvertRequest
+
+// ReconvertJSONRequestBody defines body for Reconvert for application/json ContentType.
+type ReconvertJSONRequestBody = ReconvertRequest
 
 // AsUnconfirmedSegmentRequest returns the union data inside the SegmentRequest as a UnconfirmedSegmentRequest
 func (t SegmentRequest) AsUnconfirmedSegmentRequest() (UnconfirmedSegmentRequest, error) {
@@ -293,12 +306,15 @@ func (t *SegmentResponse) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Convert 読みを文節ごとのかな漢字候補に変換する
+	// Convert 読みを自動分割し、文節ごとのかな漢字候補に変換する
 	// (POST /convert)
 	Convert(ctx echo.Context) error
 	// GetHealth ヘルスチェック
 	// (GET /healsh)
 	GetHealth(ctx echo.Context) error
+	// Reconvert 指定した文節境界と確定状態で再変換する
+	// (POST /reconvert)
+	Reconvert(ctx echo.Context) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -321,6 +337,15 @@ func (w *ServerInterfaceWrapper) GetHealth(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetHealth(ctx)
+	return err
+}
+
+// Reconvert converts echo context to params.
+func (w *ServerInterfaceWrapper) Reconvert(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Reconvert(ctx)
 	return err
 }
 
@@ -373,5 +398,6 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 
 	router.GET(options.BaseURL+"/healsh", wrapper.GetHealth, options.OperationMiddlewares["getHealth"]...)
 	router.POST(options.BaseURL+"/convert", wrapper.Convert, options.OperationMiddlewares["convert"]...)
+	router.POST(options.BaseURL+"/reconvert", wrapper.Reconvert, options.OperationMiddlewares["reconvert"]...)
 
 }

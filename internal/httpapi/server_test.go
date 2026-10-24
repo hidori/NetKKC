@@ -26,7 +26,6 @@ func (f converterFunc) Convert(ctx context.Context, reading string, boundaries [
 }
 
 type convertResponse struct {
-	Reading  string `json:"reading"`
 	Segments []struct {
 		Reading    string   `json:"reading"`
 		Candidates []string `json:"candidates"`
@@ -61,6 +60,7 @@ func TestConvert(t *testing.T) {
 
 	for _, test := range []struct {
 		name           string
+		path           string
 		body           string
 		wantReading    string
 		wantBoundaries []string
@@ -69,8 +69,8 @@ func TestConvert(t *testing.T) {
 	}{
 		{
 			name: "confirmed middle segment",
+			path: "/reconvert",
 			body: `{
-				"reading":"きょうはとうきょうにいく",
 				"segments":[
 					{"reading":"きょうは","candidates":["使わない候補"]},
 					{"reading":"とうきょうに","confirmed":true,"candidates":["クライアントが確定した文字列"]},
@@ -84,7 +84,6 @@ func TestConvert(t *testing.T) {
 				{Reading: "いく", Candidates: []string{"行く", "逝く"}},
 			},
 			want: `{
-				"reading":"きょうはとうきょうにいく",
 				"segments":[
 					{"reading":"きょうは","confirmed":false,"candidates":["今日は"]},
 					{"reading":"とうきょうに","confirmed":true,"candidates":["クライアントが確定した文字列"]},
@@ -93,19 +92,20 @@ func TestConvert(t *testing.T) {
 		},
 		{
 			name: "fully confirmed does not call Mozc",
-			body: `{"reading":"か","segments":[{"reading":"か","confirmed":true,"candidates":["蚊"]}]}`,
-			want: `{"reading":"か","segments":[{"reading":"か","confirmed":true,"candidates":["蚊"]}]}`,
+			path: "/reconvert",
+			body: `{"segments":[{"reading":"か","confirmed":true,"candidates":["蚊"]}]}`,
+			want: `{"segments":[{"reading":"か","confirmed":true,"candidates":["蚊"]}]}`,
 		},
 		{
 			name:        "response uses Mozc reading",
-			body:        `{"reading":"ＡＢＣのてすと"}`,
+			path:        "/convert",
+			body:        `{"reading":"ＡＢＣのてすと","segments":[{"reading":"無視される"}]}`,
 			wantReading: "ＡＢＣのてすと",
 			segments: []mozc.Segment{
 				{Reading: "ABCの", Candidates: []string{"ABCの"}},
 				{Reading: "てすと", Candidates: []string{"テスト"}},
 			},
 			want: `{
-				"reading":"ABCのてすと",
 				"segments":[
 					{"reading":"ABCの","confirmed":false,"candidates":["ABCの"]},
 					{"reading":"てすと","confirmed":false,"candidates":["テスト"]}
@@ -126,7 +126,7 @@ func TestConvert(t *testing.T) {
 				}
 			}
 
-			response := request(t, New(converter), http.MethodPost, "/convert", "application/json", test.body)
+			response := request(t, New(converter), http.MethodPost, test.path, "application/json", test.body)
 			if response.Code != http.StatusOK {
 				t.Fatalf("%d: %s", response.Code, response.Body)
 			}
@@ -150,26 +150,31 @@ func TestConvert(t *testing.T) {
 func TestInvalidRequestsDoNotCallMozc(t *testing.T) {
 	t.Parallel()
 
-	for _, body := range []string{
-		``, `null`, `{}`, `{"reading":""}`, `{"reading":12}`, `{"reading":"か",`,
-		`{"reading":"か"}{"reading":"き"}`, `{"reading":"か"} trailing text`,
-		"{\"reading\":\"\xff\"}",
-		`{"reading":"か","segments":[null]}`,
-		`{"reading":"か","segments":[{"confirmed":false}]}`,
-		`{"reading":"か","segments":[{"reading":"き"}]}`,
-		`{"reading":"か","segments":[{"reading":"か","confirmed":null}]}`,
-		`{"reading":"か","segments":[{"reading":"か","confirmed":"true"}]}`,
-		`{"reading":"か","segments":[{"reading":"か","confirmed":true}]}`,
-		`{"reading":"か","segments":[{"reading":"か","confirmed":true,"candidates":[]}]}`,
-		`{"reading":"か","segments":[{"reading":"か","confirmed":true,"candidates":["蚊","科"]}]}`,
-		`{"reading":"か","segments":[{"reading":"か","confirmed":true,"candidates":[""]}]}`,
-		`{"reading":"か","segments":[{"reading":"か","candidates":null}]}`,
-		`{"reading":"か","segments":[{"reading":"か","candidates":[1]}]}`,
+	longReading := strings.Repeat("a", 4097)
+
+	for _, test := range []struct{ path, body string }{
+		{"/convert", ``}, {"/convert", `null`}, {"/convert", `{}`}, {"/convert", `{"reading":""}`},
+		{"/convert", `{"reading":12}`}, {"/convert", `{"reading":"か",`},
+		{"/convert", `{"reading":"か"}{"reading":"き"}`}, {"/convert", `{"reading":"か"} trailing text`},
+		{"/convert", "{\"reading\":\"\xff\"}"},
+		{"/convert", `{"reading":"` + longReading + `"}`},
+		{"/reconvert", `{}`}, {"/reconvert", `{"segments":[]}`},
+		{"/reconvert", `{"segments":[null]}`},
+		{"/reconvert", `{"segments":[{"confirmed":false}]}`},
+		{"/reconvert", `{"segments":[{"reading":"か","confirmed":null}]}`},
+		{"/reconvert", `{"segments":[{"reading":"か","confirmed":"true"}]}`},
+		{"/reconvert", `{"segments":[{"reading":"か","confirmed":true}]}`},
+		{"/reconvert", `{"segments":[{"reading":"か","confirmed":true,"candidates":[]}]}`},
+		{"/reconvert", `{"segments":[{"reading":"か","confirmed":true,"candidates":["蚊","科"]}]}`},
+		{"/reconvert", `{"segments":[{"reading":"か","confirmed":true,"candidates":[""]}]}`},
+		{"/reconvert", `{"segments":[{"reading":"か","candidates":null}]}`},
+		{"/reconvert", `{"segments":[{"reading":"か","candidates":[1]}]}`},
+		{"/reconvert", `{"segments":[{"reading":"` + longReading[:4000] + `"},{"reading":"` + longReading[:97] + `"}]}`},
 	} {
-		t.Run(body, func(t *testing.T) {
+		t.Run(test.path+" "+test.body, func(t *testing.T) {
 			t.Parallel()
 
-			response := request(t, New(mustNotCallMozc(t)), http.MethodPost, "/convert", "application/json", body)
+			response := request(t, New(mustNotCallMozc(t)), http.MethodPost, test.path, "application/json", test.body)
 			if response.Code != http.StatusBadRequest {
 				t.Fatalf("want 400, got %d: %s", response.Code, response.Body)
 			}
@@ -181,20 +186,22 @@ func TestInvalidRequestDetails(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
+		path  string
 		body  string
 		field string
 	}{
-		{`{"reading":""}`, "reading"},
-		{`{"reading":"か","segments":[{"reading":"き"}]}`, "segments"},
-		{`{"reading":"か","segments":[{"reading":"か","confirmed":null}]}`, "segments[0].confirmed"},
-		{`{"reading":"かき","segments":[{"reading":"か"},{"reading":"き","confirmed":true,"candidates":[]}]}`, "segments[1].candidates"},
-		{`{"reading":"か","max_candidates":0}`, "max_candidates"},
-		{`{"reading":"か","max_candidates":1001}`, "max_candidates"},
+		{"/convert", `{"reading":""}`, "reading"},
+		{"/convert", `{"reading":"` + strings.Repeat("a", 4097) + `"}`, "reading"},
+		{"/convert", `{"reading":"か","max_candidates":0}`, "max_candidates"},
+		{"/convert", `{"reading":"か","max_candidates":1001}`, "max_candidates"},
+		{"/reconvert", `{}`, "segments"},
+		{"/reconvert", `{"segments":[{"reading":"か","confirmed":null}]}`, "segments[0].confirmed"},
+		{"/reconvert", `{"segments":[{"reading":"か"},{"reading":"き","confirmed":true,"candidates":[]}]}`, "segments[1].candidates"},
 	} {
-		t.Run(test.body, func(t *testing.T) {
+		t.Run(test.path+" "+test.body, func(t *testing.T) {
 			t.Parallel()
 
-			response := request(t, New(mustNotCallMozc(t)), http.MethodPost, "/convert", "application/json", test.body)
+			response := request(t, New(mustNotCallMozc(t)), http.MethodPost, test.path, "application/json", test.body)
 
 			var got api.ErrorResponse
 			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
@@ -345,7 +352,7 @@ func TestHTTPMozcIntegration(t *testing.T) {
 
 	e := New(mozc.NewConverter(client))
 
-	converted := postConvert(t, e, `{"reading":"こんにちは、きょうはいいお天気ですね"}`)
+	converted := post(t, e, "/convert", `{"reading":"こんにちは、きょうはいいお天気ですね"}`)
 	checkInitialConversion(t, converted, "こんにちは、きょうはいいお天気ですね")
 
 	converted.Segments[2].Confirmed = true
@@ -353,18 +360,18 @@ func TestHTTPMozcIntegration(t *testing.T) {
 	selected := converted.Segments[2].Candidates[0]
 	converted.Segments[0].Candidates = []string{"再生成で捨てられる候補"}
 
-	body, err := json.Marshal(converted)
+	body, err := json.Marshal(map[string]any{"segments": converted.Segments})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	checkReconversion(t, postConvert(t, e, string(body)), selected, "再生成で捨てられる候補")
+	checkReconversion(t, post(t, e, "/reconvert", string(body)), selected, "再生成で捨てられる候補")
 }
 
-func postConvert(t *testing.T, e *echo.Echo, body string) convertResponse {
+func post(t *testing.T, e *echo.Echo, path, body string) convertResponse {
 	t.Helper()
 
-	response := request(t, e, http.MethodPost, "/convert", "application/json", body)
+	response := request(t, e, http.MethodPost, path, "application/json", body)
 	if response.Code != http.StatusOK {
 		t.Fatalf("%d: %s", response.Code, response.Body)
 	}
@@ -380,7 +387,7 @@ func postConvert(t *testing.T, e *echo.Echo, body string) convertResponse {
 func checkInitialConversion(t *testing.T, converted convertResponse, reading string) {
 	t.Helper()
 
-	if len(converted.Segments) < 3 || converted.Reading != reading {
+	if len(converted.Segments) < 3 {
 		t.Fatalf("unexpected response: %+v", converted)
 	}
 
@@ -394,7 +401,7 @@ func checkInitialConversion(t *testing.T, converted convertResponse, reading str
 		joined.WriteString(segment.Reading)
 	}
 
-	if joined.String() != converted.Reading {
+	if joined.String() != reading {
 		t.Fatal("segment readings do not preserve input")
 	}
 }

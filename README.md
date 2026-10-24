@@ -23,7 +23,7 @@ Kana-Kanji conversion for embedded and edge devices over pluggable transports.
 ## Development Environment
 
 The API contract is defined in `openapi.yaml` using OpenAPI 3.1. See
-`doc/SPEC.md` for conversion behavior. Models and Echo server interfaces are
+`doc/SPEC.md` for design policy. Models and Echo server interfaces are
 generated with oapi-codegen v2.8.0. Use Go 1.27.1 as pinned in `mise.toml`.
 
 Open the repository in the VS Code Dev Container. Docker Compose (`compose.yaml`)
@@ -46,7 +46,8 @@ make lint-fix          # Run golangci-lint and apply automatic fixes.
 make test              # Run all tests, including real Mozc and HTTP round trips.
 ```
 
-`POST /convert` converts a reading. For example:
+`POST /convert` converts a reading, and `POST /reconvert` converts again with
+specified segments. For example:
 
 ```sh
 curl -sS -H 'Content-Type: application/json' \

@@ -20,10 +20,12 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-// Limits of candidates returned for each unconfirmed segment.
 const (
+	// Limits of candidates returned for each unconfirmed segment.
 	defaultCandidateLimit = 20
 	maxCandidateLimit     = 1000
+	// Limit of the whole reading in UTF-8 bytes.
+	maxReadingBytes = 4096
 )
 
 type Converter interface {
@@ -47,7 +49,7 @@ func New(converter Converter) *echo.Echo {
 
 func requireJSON(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(ctx echo.Context) error {
-		if ctx.Request().Method == http.MethodPost && ctx.Path() == "/convert" {
+		if ctx.Request().Method == http.MethodPost {
 			kind, _, err := mime.ParseMediaType(ctx.Request().Header.Get(echo.HeaderContentType))
 			if err != nil || kind != echo.MIMEApplicationJSON {
 				return echo.NewHTTPError(http.StatusUnsupportedMediaType, "Content-Type must be application/json")
@@ -108,18 +110,53 @@ func (s *Server) Convert(ctx echo.Context) error {
 	return errs.Wrap(ctx.JSON(http.StatusOK, response))
 }
 
-// convert validates the request and returns the response for HTTP 200.
+func (s *Server) Reconvert(ctx echo.Context) error {
+	var body api.ReconvertRequest
+	if err := ctx.Bind(&body); err != nil {
+		return errs.Wrap(err)
+	}
+
+	response, err := s.reconvert(ctx.Request().Context(), body)
+	if err != nil {
+		return err
+	}
+
+	return errs.Wrap(ctx.JSON(http.StatusOK, response))
+}
+
+// convert splits the reading automatically and returns the response for HTTP 200.
 func (s *Server) convert(ctx context.Context, body api.ConvertRequest) (api.ConvertResponse, error) {
 	if body.Reading == "" || !utf8.ValidString(body.Reading) {
 		return api.ConvertResponse{}, invalidField("reading", "must be a non-empty UTF-8 string")
 	}
 
-	limit := defaultCandidateLimit
-	if body.MaxCandidates != nil {
-		limit = *body.MaxCandidates
-		if limit < 1 || limit > maxCandidateLimit {
-			return api.ConvertResponse{}, invalidField("max_candidates", fmt.Sprintf("must be between 1 and %d", maxCandidateLimit))
-		}
+	if len(body.Reading) > maxReadingBytes {
+		return api.ConvertResponse{}, invalidField("reading", fmt.Sprintf("must be at most %d bytes", maxReadingBytes))
+	}
+
+	limit, err := candidateLimit(body.MaxCandidates)
+	if err != nil {
+		return api.ConvertResponse{}, err
+	}
+
+	converted, err := s.segments(ctx, body.Reading, nil, nil)
+	if err != nil {
+		return api.ConvertResponse{}, err
+	}
+
+	return buildResponse(converted, nil, limit)
+}
+
+// reconvert converts with the requested segments and returns the response for
+// HTTP 200. The joined segment readings are the whole reading.
+func (s *Server) reconvert(ctx context.Context, body api.ReconvertRequest) (api.ConvertResponse, error) {
+	if len(body.Segments) == 0 {
+		return api.ConvertResponse{}, invalidField("segments", "must not be empty")
+	}
+
+	limit, err := candidateLimit(body.MaxCandidates)
+	if err != nil {
+		return api.ConvertResponse{}, err
 	}
 
 	boundaries, confirmations, err := parseSegments(body.Segments)
@@ -127,11 +164,12 @@ func (s *Server) convert(ctx context.Context, body api.ConvertRequest) (api.Conv
 		return api.ConvertResponse{}, err
 	}
 
-	if len(boundaries) > 0 && strings.Join(boundaries, "") != body.Reading {
-		return api.ConvertResponse{}, invalidField("segments", "segment readings must concatenate to the reading")
+	reading := strings.Join(boundaries, "")
+	if len(reading) > maxReadingBytes {
+		return api.ConvertResponse{}, invalidField("segments", fmt.Sprintf("joined readings must be at most %d bytes", maxReadingBytes))
 	}
 
-	converted, err := s.segments(ctx, body.Reading, boundaries, confirmations)
+	converted, err := s.segments(ctx, reading, boundaries, confirmations)
 	if err != nil {
 		return api.ConvertResponse{}, err
 	}
@@ -139,19 +177,27 @@ func (s *Server) convert(ctx context.Context, body api.ConvertRequest) (api.Conv
 	return buildResponse(converted, confirmations, limit)
 }
 
-// parseSegments validates the requested segments. It returns their readings and,
-// for each segment, the confirmed candidate or nil when it is unconfirmed.
-func parseSegments(segments *[]api.SegmentRequest) ([]string, []*string, error) {
-	if segments == nil {
-		return nil, nil, nil
+func candidateLimit(value *api.MaxCandidates) (int, error) {
+	if value == nil {
+		return defaultCandidateLimit, nil
 	}
 
+	if *value < 1 || *value > maxCandidateLimit {
+		return 0, invalidField("max_candidates", fmt.Sprintf("must be between 1 and %d", maxCandidateLimit))
+	}
+
+	return *value, nil
+}
+
+// parseSegments validates the requested segments. It returns their readings and,
+// for each segment, the confirmed candidate or nil when it is unconfirmed.
+func parseSegments(segments []api.SegmentRequest) ([]string, []*string, error) {
 	var (
 		boundaries    []string
 		confirmations []*string
 	)
 
-	for i, value := range *segments {
+	for i, value := range segments {
 		reading, confirmed, err := parseSegment(i, value)
 		if err != nil {
 			return nil, nil, err
@@ -244,12 +290,10 @@ func allConfirmed(confirmations []*string) bool {
 // buildResponse keeps the confirmed candidates and uses up to limit of Mozc's
 // candidates for the other segments.
 func buildResponse(converted []mozc.Segment, confirmations []*string, limit int) (api.ConvertResponse, error) {
-	// The response reading is Mozc's, which may differ from the request
+	// Segment readings are Mozc's, which may differ from the request
 	// (Mozc rewrites full-width ASCII to half-width, for example).
 	response := api.ConvertResponse{Segments: make([]api.SegmentResponse, len(converted))}
 	for i, segment := range converted {
-		response.Reading += segment.Reading
-
 		var err error
 		if len(confirmations) > i && confirmations[i] != nil {
 			err = response.Segments[i].FromConfirmedSegment(api.ConfirmedSegment{

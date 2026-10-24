@@ -9,8 +9,9 @@ info:
     Go の生成器には oapi-codegen を使用し、Echo 用サーバーとモデルを生成する。
     生成器は OpenAPI 3.1 対応の oapi-codegen v2.8.0 に固定する。
 
-    POST /convert で初回変換と再変換を処理する。
-    空の読みは受け付けない。要求本文の上限は 1 MiB、変換処理の期限は15秒。
+    POST /convert で初回変換、POST /reconvert で文節を指定した再変換を処理する。
+    空の読みは受け付けない。読みは文節をつなげた状態で UTF-8 の 4096 バイトまで。
+    要求本文の上限は 1 MiB、変換処理の期限は15秒。
     examples は構造を示す例であり、Mozc の分割や候補順を保証しない。
 paths:
   /healsh:
@@ -30,15 +31,29 @@ paths:
   /convert:
     post:
       operationId: convert
-      summary: 読みを文節ごとのかな漢字候補に変換する
+      summary: 読みを自動分割し、文節ごとのかな漢字候補に変換する
       description: |
-        初回と再変換で同じ API を使用する。
-        segments の省略・空配列は Mozc による自動分割を意味する。
-        指定時は各要素の reading で文節境界を指定する。
-
-        読みは加工せずに Mozc に渡す。
-        各文節の reading の連結が全体の reading と一致することを検証する。
-        この要素間制約はモデルの生成だけでは保証されず、サーバーで検証する。
+        初回の変換。読みは加工せずに Mozc に渡し、Mozc の自動分割で文節に分ける。
+        reading と max_candidates 以外のフィールド（segments など）は無視する。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertRequest'
+            example:
+              reading: きょうはとうきょうにいく
+      responses:
+        '200':
+          $ref: '#/components/responses/Converted'
+        default:
+          $ref: '#/components/responses/Error'
+  /reconvert:
+    post:
+      operationId: reconvert
+      summary: 指定した文節境界と確定状態で再変換する
+      description: |
+        2 回目以降の変換。各文節の reading で文節境界を指定し、それらの連結を全体の読みとする。
 
         confirmed の省略・false は未確定として候補を生成し直す。
         未確定文節の要求内の candidates は使用しない。
@@ -48,29 +63,17 @@ paths:
         指定境界を処理できない場合は、自動分割に戻さずエラーにする。
 
         サーバーは前回の要求との一致を確認しない。
-        別の文字列も今回の独立した変換要求として処理し、
         確定候補が前回の応答に含まれていたかは照合しない。
-        確定状態の保持はクライアントの責務であり、学習や独立した確定通知 API は設けない。
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ConvertRequest'
+              $ref: '#/components/schemas/ReconvertRequest'
             examples:
-              initial:
-                summary: 初回の自動分割
-                value:
-                  reading: きょうはとうきょうにいく
-              automaticSegmentation:
-                summary: 空配列でも自動分割
-                value:
-                  reading: きょうはとうきょうにいく
-                  segments: []
               reconvert:
                 summary: 途中の文節だけを確定して再変換
                 value:
-                  reading: きょうはとうきょうにいく
                   segments:
                     - reading: きょうは
                     - reading: とうきょうに
@@ -81,61 +84,47 @@ paths:
               ignoredCandidates:
                 summary: 未確定文節の候補は送っても使用しない
                 value:
-                  reading: いく
                   segments:
                     - reading: いく
                       candidates: [行く]
       responses:
         '200':
-          description: Mozc が返した読みと文節ごとの変換結果。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ConvertResponse'
-              examples:
-                initial:
-                  summary: 自動分割結果
-                  value:
-                    reading: きょうはとうきょうにいく
-                    segments:
-                      - reading: きょうは
-                        confirmed: false
-                        candidates: [今日は, 教派]
-                      - reading: とうきょうに
-                        confirmed: false
-                        candidates: [東京に]
-                      - reading: いく
-                        confirmed: false
-                        candidates: [行く, 逝く]
-                reconverted:
-                  summary: 確定候補を維持して未確定文節の候補を生成
-                  value:
-                    reading: きょうはとうきょうにいく
-                    segments:
-                      - reading: きょうは
-                        confirmed: false
-                        candidates: [今日は, 教派]
-                      - reading: とうきょうに
-                        confirmed: true
-                        candidates: [東京に]
-                      - reading: いく
-                        confirmed: false
-                        candidates: [行く, 逝く]
+          $ref: '#/components/responses/Converted'
         default:
-          description: |
-            400: JSON・フィールド型・読み・確定候補・文節境界の不整合。details に項目ごとの理由を含む場合がある。
-            413: 要求本文が 1 MiB を超える。
-            415: Content-Type が application/json ではない。
-            422: 指定境界を実現できない（Mozc が読みを書き換えた場合を含む）。
-            500: 想定外のエラー。
-            502: Mozc の応答が不正（候補がないなど）。
-            503: Mozc に接続できない、または変換に失敗した。
-            504: 変換処理の期限超過・キャンセル。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/Error'
 components:
+  responses:
+    Converted:
+      description: 文節ごとの変換結果。全体の読みは各文節の reading の連結。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConvertResponse'
+          example:
+            segments:
+              - reading: きょうは
+                confirmed: false
+                candidates: [今日は, 教派]
+              - reading: とうきょうに
+                confirmed: true
+                candidates: [東京に]
+              - reading: いく
+                confirmed: false
+                candidates: [行く, 逝く]
+    Error:
+      description: |
+        400: JSON・フィールド型・読み・確定候補・文節境界の不整合。details に項目ごとの理由を含む場合がある。
+        413: 要求本文が 1 MiB を超える。
+        415: Content-Type が application/json ではない。
+        422: 指定境界を実現できない（Mozc が読みを書き換えた場合を含む）。
+        500: 想定外のエラー。
+        502: Mozc の応答が不正（候補がないなど）。
+        503: Mozc に接続できない、または変換に失敗した。
+        504: 変換処理の期限超過・キャンセル。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
   schemas:
     ErrorResponse:
       type: object
@@ -162,10 +151,10 @@ components:
       description: |
         読み文字列。サーバーは加工しない。
         応答は Mozc が返した読みで、Mozc が書き換えた場合（全角英数字の半角化など）は要求と異なる。
-        文節操作は応答の読みを基準にする。
+        再変換は応答の読みを基準にする。
     Candidates:
       type: array
-      description: 変換候補の文字列配列。候補数の上限は未確定。
+      description: 変換候補の文字列配列。
       items:
         type: string
     ConvertRequest:
@@ -174,22 +163,28 @@ components:
       properties:
         reading:
           $ref: '#/components/schemas/Reading'
+        max_candidates:
+          $ref: '#/components/schemas/MaxCandidates'
+    ReconvertRequest:
+      type: object
+      required: [segments]
+      properties:
         segments:
           type: array
-          description: |
-            省略または空配列なら自動分割。
-            指定時は各文節の reading の連結が全体の reading と一致すること。
-            要求間の状態や候補全体を再送する必要はない。
+          minItems: 1
+          description: 読み順の文節。要求間の状態や候補全体を再送する必要はない。
           items:
             $ref: '#/components/schemas/SegmentRequest'
         max_candidates:
-          type: integer
-          minimum: 1
-          maximum: 1000
-          default: 20
-          description: |
-            未確定文節ごとに返す候補の最大数。Mozc の候補順で先頭から返す。
-            範囲外は入力エラー（400）。
+          $ref: '#/components/schemas/MaxCandidates'
+    MaxCandidates:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 20
+      description: |
+        未確定文節ごとに返す候補の最大数。Mozc の候補順で先頭から返す。
+        範囲外は入力エラー（400）。
     SegmentRequest:
       description: |
         未確定または確定済みの文節。
@@ -237,13 +232,11 @@ components:
             minLength: 1
     ConvertResponse:
       type: object
-      required: [reading, segments]
+      required: [segments]
       properties:
-        reading:
-          $ref: '#/components/schemas/Reading'
         segments:
           type: array
-          description: 読み順の文節。各 reading の連結は全体の reading と一致する。
+          description: 読み順の文節。各 reading の連結が全体の読み。
           items:
             $ref: '#/components/schemas/SegmentResponse'
     SegmentResponse:
